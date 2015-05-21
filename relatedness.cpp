@@ -101,7 +101,9 @@ void relatedness::calculate_ibs(){
 void relatedness::calculate_pairwise_likelihood(
         std::pair<int,int> pair,
         Eigen::MatrixXd& ibs_pairwise,
-        Eigen::VectorXd& mask_snp){
+        Eigen::VectorXd& mask_snp,
+        std::vector<double>& likelihood_1,
+        std::vector<double>& likelihood_2){
 
 	//Parallallize
 	//Iterate through all SNPs
@@ -116,17 +118,25 @@ void relatedness::calculate_pairwise_likelihood(
 		}
 
 	    //Pulls out info field for first individual from VCF, pulls out the three precomputed genotype likelihoods
-		std::vector<std::string> l1 = split(split(snp_data[j][pair.first],':')[3],',');
-		std::vector<std::string> l2 = split(split(snp_data[j][pair.second],':')[3],',');
+		std::vector<StringItPair> l1 = split_it(split_it(snp_data[j][pair.first],':')[3],',');
+		std::vector<StringItPair> l2 = split_it(split_it(snp_data[j][pair.second],':')[3],',');
 
 		//Assert: l1==l2?
-		double* likelihood_1 = new double[l1.size()];
-		double* likelihood_2 = new double[l2.size()];
+		//double* likelihood_1 = new double[l1.size()];
+		//double* likelihood_2 = new double[l2.size()];
+        if (likelihood_1.size() < l1.size()) {
+            likelihood_1.resize(l1.size());
+        }
+        if (likelihood_2.size() < l2.size()) {
+            likelihood_2.resize(l2.size());
+        }
 
 		//Convert likelihoods from strings to floating point numbers
 		for(int k=0; k<l1.size(); k++){
-			likelihood_1[k]=std::stod(l1[k]);
-			likelihood_2[k]=std::stod(l2[k]);
+            char* e1 = &*l1[k].end;
+            char* e2 = &*l2[k].end;
+			likelihood_1[k]=std::strtod(&(*l1[k].begin), &e1);
+			likelihood_2[k]=std::strtod(&(*l2[k].begin), &e2);
 			//If one of those likelihoods comes out as negative (anomaly), we mask those SNPs
 			if(likelihood_1[k]==-9.0 || likelihood_2[k]==-9.0){
 				mask_snp[j]=1;
@@ -147,8 +157,8 @@ void relatedness::calculate_pairwise_likelihood(
 	    ibs_pairwise(j,8)=(likelihood_1[2]*likelihood_2[2]);
 
 		//Clean up
-		delete[] likelihood_1;
-		delete[] likelihood_2;
+		//delete[] likelihood_1;
+		//delete[] likelihood_2;
 	}
 
 }
@@ -173,23 +183,42 @@ void relatedness::calculate_pairwise_ibd(){
 
 	std::srand(std::time(0));
 
+    int numThreads = omp_get_max_threads();
+    std::vector<std::vector<double>> l1s(numThreads);
+    std::vector<std::vector<double>> l2s(numThreads);
+
+    std::vector<Eigen::MatrixXd> ibs_pairwise_mats(numThreads,
+                                  Eigen::MatrixXd::Zero(snp_count, GENOTYPE_COUNT));
+
+    std::vector<Eigen::VectorXd> mask_snp_vecs(numThreads,
+                                  Eigen::VectorXd::Zero(snp_count));
+
+    std::vector<Eigen::MatrixXd> ibs_best_mats(numThreads,
+                                  Eigen::MatrixXd::Zero(snp_count, IBD_COUNT));
 	//Iterate through all pairwise computations
 	#pragma omp parallel for
 	for(int i=0; i<pairs.size(); i++) {
+        // The index of this thread
+        size_t id = omp_get_thread_num();
 
 		//Matrices for all possible pairs of genotypes for every SNP.
 		//This will eventually store genotype likelihoods based on the calling likelihood (for example based on read depth)
 		//Store these pairwise likelihoods in an array AATT,TTAA,AAAT,ATAA,ATTT,TTAT,AAAA,ATAT,TTTT
-		Eigen::MatrixXd ibs_pairwise = Eigen::MatrixXd::Zero(snp_count,GENOTYPE_COUNT);
+		//Eigen::MatrixXd ibs_pairwise = Eigen::MatrixXd::Zero(snp_count,GENOTYPE_COUNT);
+        auto& ibs_pairwise = ibs_pairwise_mats[id];
 
 		//A matrix to denote SNPs we may want to mask for two reasons(see below)
-		Eigen::VectorXd mask_snp = Eigen::VectorXd::Zero(snp_count);
+		//Eigen::VectorXd mask_snp = Eigen::VectorXd::Zero(snp_count);
+        auto& mask_snp = mask_snp_vecs[id];
 
-		calculate_pairwise_likelihood(pairs[i], ibs_pairwise, mask_snp);
+        auto& l1 = l1s[id];
+        auto& l2 = l2s[id];
+		calculate_pairwise_likelihood(pairs[i], ibs_pairwise, mask_snp, l1, l2);
 
 		//Identify the most likely genotype combination: Index of genotype for that SNP
 		//For each SNP, given the best genotype combination, pull out the appropriate P(IBS|IBD) for all three IBS possibilities
-		Eigen::MatrixXd ibs_best = Eigen::MatrixXd::Zero(snp_count,IBD_COUNT);
+		//Eigen::MatrixXd ibs_best = Eigen::MatrixXd::Zero(snp_count,IBD_COUNT);
+        auto& ibs_best = ibs_best_mats[id];
 
 		for(int j=0; j<snp_count; j++){
 			Eigen::MatrixXf::Index bestIndex;

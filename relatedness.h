@@ -58,7 +58,10 @@ public:
 	void calculate_pairwise_likelihood(
             std::pair<int,int>,
             Eigen::MatrixXd&,
-            Eigen::VectorXd&);
+            Eigen::VectorXd&,
+            std::vector<double>&,
+            std::vector<double>&
+            );
 
 	void calculate_pairwise_ibd();
 
