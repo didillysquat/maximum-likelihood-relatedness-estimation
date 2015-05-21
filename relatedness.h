@@ -19,8 +19,8 @@ private:
 
 	std::vector<std::string> header;
 
-	std::vector<std::vector<std::string>> snp_data;	
-	
+	std::vector<std::vector<std::string>> snp_data;
+
 	int snp_count;
 
 	std::vector<std::string> unrelated_individuals {"1_0", "1_1", "1_2", "1_3", "1_4", "1_5", "1_6", "1_7",
@@ -55,17 +55,25 @@ public:
 
 	void calculate_ibs();
 
-	void calculate_pairwise_likelihood(std::pair<int,int>);
+	void calculate_pairwise_likelihood(
+            std::pair<int,int>,
+            Eigen::MatrixXd&,
+            Eigen::VectorXd&);
 
 	void calculate_pairwise_ibd();
 
-	Eigen::Vector3d optimize_parameters();
+	Eigen::Vector3d optimize_parameters(
+            Eigen::MatrixXd& ibs_best,
+            Eigen::VectorXd& mask_snp);
 
 	double kin(std::pair<double,double>);
 
 	double gl_kin(std::pair<double,double>);
 
-	Eigen::Vector3d em_optimization(Eigen::Vector3d k_values);
+	Eigen::Vector3d em_optimization(
+            Eigen::Vector3d k_values,
+             Eigen::MatrixXd& ibs_best,
+            Eigen::VectorXd& mask_snp);
 
 	void set_infile(char*);
 
