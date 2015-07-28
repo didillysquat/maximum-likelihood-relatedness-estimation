@@ -105,6 +105,7 @@ void relatedness::populate_data(){
 	std::cerr << "GTIndex = " << GTIndex << ", GQIndex = " << GQIndex << ", GLIndex = " << GLIndex << "\n";
 
 	snp_count = snp_data.size();
+	std::cerr << "Parsed " << snp_count << " SNPs\n";
 }
 
 void relatedness::calculate_allele_frequencies(){
@@ -358,8 +359,8 @@ void relatedness::calculate_pairwise_ibd(bool testing){
     size_t maxJ = testing ? 16 : header.size();
 	for(int i = 0; i < maxI; i++){
 		for(int j = i+1; j < maxJ; j++){
-			if(split(header[i],'_')[0]==split(header[j],'_')[0])
-                workQueue.enqueue(std::make_pair(i,j));
+			//if(split(header[i],'_')[0]==split(header[j],'_')[0])
+                	workQueue.enqueue(std::make_pair(i,j));
 		}
 	}
     queueFilled = true;
