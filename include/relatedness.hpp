@@ -6,6 +6,8 @@
 
 #include <Eigen/Dense>
 
+#include "utils.hpp"
+
 #define IBD_COUNT 3
 #define GENOTYPE_COUNT 9
 
@@ -67,15 +69,32 @@ public:
             std::vector<double>&
             );
 
-	void calculate_pairwise_ibd();
+	void calculate_pairwise_ibd(bool testing);
 
 	Eigen::Vector3d optimize_parameters(
+            Eigen::Array<Eigen::MatrixXd, GENOTYPE_COUNT, 1>& ibs_all,
+            Eigen::VectorXd& mask_snp,
+            Eigen::MatrixXd& pibs,
+            Eigen::Array<Eigen::MatrixXd, GENOTYPE_COUNT, 1>& workingSpace);
+
+    Eigen::Vector3d optimize_parameters(
             Eigen::MatrixXd& ibs_best,
             Eigen::VectorXd& mask_snp);
+
 
 	double kin(std::pair<double,double>);
 
 	double gl_kin(std::pair<double,double>);
+
+
+	Eigen::Vector3d em_optimization(
+            Eigen::Vector3d k_values,
+            Eigen::Array<Eigen::MatrixXd, GENOTYPE_COUNT, 1>& ibs_all,
+            Eigen::VectorXd& mask_snp,
+            Eigen::MatrixXd& pibs,
+            Eigen::Array<Eigen::MatrixXd, GENOTYPE_COUNT, 1>& workingSpace);
+
+
 
 	Eigen::Vector3d em_optimization(
             Eigen::Vector3d k_values,
@@ -99,6 +118,8 @@ public:
 	int getSNPCount() { return snp_count; }
 
     uint32_t getNumWorkers() { return num_worker_threads; }
+
+    std::vector<std::string>& getHeader() { return header; }
 };
 
 #endif

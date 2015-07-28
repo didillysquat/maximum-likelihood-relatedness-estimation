@@ -116,7 +116,8 @@ void relatedness::calculate_pairwise_likelihood(
 	    double q=1.0-p;
 
 		//Mask SNPs where allele frequency is fixed
-		if (allele_frequency(j)==1.0||allele_frequency(j)==0.0){
+		if (allele_frequency(j) == 1.0 or
+            allele_frequency(j) == 0.0){
 		    mask_snp(j)=1;
 		}
 
@@ -141,7 +142,7 @@ void relatedness::calculate_pairwise_likelihood(
 			likelihood_1[k]=std::strtod(&(*l1[k].begin), &e1);
 			likelihood_2[k]=std::strtod(&(*l2[k].begin), &e2);
 			//If one of those likelihoods comes out as negative (anomaly), we mask those SNPs
-			if(likelihood_1[k]==-9.0 || likelihood_2[k]==-9.0){
+			if(likelihood_1[k] == -9.0 or likelihood_2[k] == -9.0){
 				mask_snp[j]=1;
 			}
 		}
@@ -180,9 +181,19 @@ void pairwiseLikelihoodWorker(
         moodycamel::ConcurrentQueue<std::pair<int, int>>& workQueue,
         moodycamel::ConcurrentQueue<std::string>& resultQueue) {
 
+
+    auto snp_count = relateObj.getSNPCount();
+    Eigen::Array<Eigen::MatrixXd, GENOTYPE_COUNT, 1> workingSpace;
+	for(int i = 0; i < GENOTYPE_COUNT; i++){
+		workingSpace(i) = Eigen::MatrixXd::Zero(snp_count,IBD_COUNT);
+	}
+
     fmt::MemoryWriter resWriter;
     std::pair<int, int> indPair;
     while (!queueFilled or workQueue.try_dequeue(indPair)) {
+        mask_snp.setZero();
+        ibs_pairwise.setZero();
+        ibs_best.setZero();
         relateObj.calculate_pairwise_likelihood(indPair, ibs_pairwise,
                                                 mask_snp, l1, l2);
 
@@ -199,9 +210,23 @@ void pairwiseLikelihoodWorker(
             }
         }
 
-        Eigen::Vector3d k_est = relateObj.optimize_parameters(ibs_best, mask_snp);
+        Eigen::Vector3d k_est;
+        switch (inferenceType) {
+            case InferenceType::BEST_GENOTYPE:
+               k_est = relateObj.optimize_parameters(ibs_best, mask_snp);
+               break;
+            case InferenceType::ALL_GENOTYPES:
+               k_est = relateObj.optimize_parameters(ibs_all,
+                                                     mask_snp,
+                                                     ibs_pairwise,
+                                                     workingSpace);
+               break;
+        }
+
+        auto& ind1 = relateObj.getHeader()[indPair.first];
+        auto& ind2 = relateObj.getHeader()[indPair.second];
         resWriter.write("{}\t{}\t{:.3f}\t{:.3f}\t{:.3f}\t{:.3f}\t{}\n",
-                        indPair.first + 1, indPair.second + 1,
+                        ind1, ind2,
                         k_est(0), k_est(1), k_est(2),
                         0.5 * k_est(1) + k_est(2),
                         mask_snp.size() - mask_snp.sum());
@@ -219,13 +244,13 @@ void pairwiseLikelihoodWorker(
 
 }
 
-void relatedness::calculate_pairwise_ibd(){
+void relatedness::calculate_pairwise_ibd(bool testing){
 
 	#ifdef DEBUG
 	std::cout << "Ind1\tInd2\tk0_hat\tk1_hat\tk2_hat\tpi_HAT\tnbSNP\n";
 	#endif
 
-	std::string output_file (outfile +std::string(".relateF_optim_cpp"));
+	std::string output_file (outfile);
 	std::ofstream outfile (output_file);
 	outfile << "Ind1\tInd2\tk0_hat\tk1_hat\tk2_hat\tpi_HAT\tnbSNP\n";
 
@@ -271,8 +296,10 @@ void relatedness::calculate_pairwise_ibd(){
     }
 
     //Generate Pairs
-	for(int i=0; i<header.size(); i++){
-		for(int j=i+1; j<header.size(); j++){
+    size_t maxI = testing ? 15 : header.size();
+    size_t maxJ = testing ? 16 : header.size();
+	for(int i = 0; i < maxI; i++){
+		for(int j = i+1; j < maxJ; j++){
 			if(split(header[i],'_')[0]==split(header[j],'_')[0])
                 workQueue.enqueue(std::make_pair(i,j));
 		}
@@ -280,7 +307,7 @@ void relatedness::calculate_pairwise_ibd(){
     queueFilled = true;
 
     std::string resLine;
-    bool obtainedRes;
+    bool obtainedRes{false};
     size_t numRes{0};
     while ((obtainedRes = resultQueue.try_dequeue(resLine)) or numWorking > 0) {
         if (obtainedRes) {
@@ -351,6 +378,19 @@ void relatedness::calculate_pairwise_ibd(){
 
 }
 
+
+Eigen::Vector3d relatedness::optimize_parameters(
+        Eigen::Array<Eigen::MatrixXd, GENOTYPE_COUNT, 1>& ibs_all,
+        Eigen::VectorXd& mask_snp,
+        Eigen::MatrixXd& pibs,
+        Eigen::Array<Eigen::MatrixXd, GENOTYPE_COUNT, 1>& Xall){
+
+	Eigen::Vector3d k_values = Eigen::Vector3d::Random();
+	k_values = k_values.cwiseAbs();
+	k_values /= k_values.sum();
+
+	return em_optimization(k_values, ibs_all, mask_snp, pibs, Xall);
+}
 
 
 
@@ -434,7 +474,7 @@ double relatedness::kin(std::pair<double,double> k12){
 	if(k0<0 || k0>1) {flag=true;}
 	if(k1<0 || k1>1) {flag=true;}
 	if(k2<0 || k2>1) {flag=true;}
-    if(4*k2*k0>=pow(k1,2)) {flag=true;}
+    if(4*k2*k0 > pow(k1,2)) {flag=true;}
     if (ibs_sum==std::numeric_limits<double>::infinity()) {flag=true;}
 
     if(flag==true){
@@ -487,7 +527,7 @@ double relatedness::gl_kin(std::pair<double,double> k12){
 	if(k0<0 || k0>1) {flag=true;}
 	if(k1<0 || k1>1) {flag=true;}
 	if(k2<0 || k2>1) {flag=true;}
-    if(4*k2*k0>=pow(k1,2)) {flag=true;}
+    if(4*k2*k0 > pow(k1,2)) {flag=true;}
     if (ibs_sum==std::numeric_limits<double>::infinity()) {flag=true;}
 
     if(flag==true){
@@ -496,6 +536,114 @@ double relatedness::gl_kin(std::pair<double,double> k12){
 
     return ibs_sum;
 }
+
+
+
+// All-genotype variant
+Eigen::Vector3d relatedness::em_optimization(
+        Eigen::Vector3d k_values,
+    	Eigen::Array<Eigen::MatrixXd, GENOTYPE_COUNT, 1>& ibs_all,
+        Eigen::VectorXd& mask_snp,
+        Eigen::MatrixXd& pibs,
+        Eigen::Array<Eigen::MatrixXd, GENOTYPE_COUNT, 1>& Xall){
+
+    //Probabilities of IBD for each SNP
+	Eigen::MatrixXd ibd_probability = Eigen::MatrixXd::Zero(snp_count,IBD_COUNT);
+
+
+    Eigen::Array<Eigen::MatrixXd, GENOTYPE_COUNT, 1> XPre;
+    XPre = ibs_all;
+    for(size_t gtIdx = 0; gtIdx < GENOTYPE_COUNT; ++gtIdx) {
+        XPre(gtIdx).col(0).array() *= pibs.col(gtIdx).array();
+        XPre(gtIdx).col(1).array() *= pibs.col(gtIdx).array();
+        XPre(gtIdx).col(2).array() *= pibs.col(gtIdx).array();
+    }
+
+
+
+	//Difference bwtween subsequent parameter estimates
+	double thresh = 100;
+	//Iteration number
+	int iter = 0;
+
+	while(thresh > 1e-4){
+		Eigen::MatrixXd X = Eigen::MatrixXd::Zero(snp_count,IBD_COUNT);
+		Eigen::VectorXd XS = Eigen::VectorXd::Zero(snp_count); //Used to normalize X
+
+        for(int j=0; j< IBD_COUNT; j++){
+            for(size_t gtIdx = 0; gtIdx < GENOTYPE_COUNT; ++gtIdx) {
+                Xall(gtIdx).col(j).noalias() = XPre(gtIdx).col(j)*k_values(j);
+            }
+        }
+        /*
+        for(int j=0; j< IBD_COUNT; j++){
+            for(size_t gtIdx = 0; gtIdx < GENOTYPE_COUNT; ++gtIdx) {
+                Xall(gtIdx).col(j).noalias() = ibs_all(gtIdx).col(j) * k_values(j);
+            }
+        }
+
+        for(size_t gtIdx = 0; gtIdx < GENOTYPE_COUNT; ++gtIdx) {
+            Xall(gtIdx).col(0).array() *= pibs.col(gtIdx).array();
+            Xall(gtIdx).col(1).array() *= pibs.col(gtIdx).array();
+            Xall(gtIdx).col(2).array() *= pibs.col(gtIdx).array();
+        }
+        */
+
+        // Sum up all genotypes to get X
+        for(size_t gtIdx = 0; gtIdx < GENOTYPE_COUNT; ++gtIdx) {
+            X += Xall(gtIdx);
+        }
+
+		XS = X.rowwise().sum();
+		for(int i=0;i <snp_count; i++){ //Mask
+			if(mask_snp(i)==1){
+				XS(i)=0;
+			}
+		}
+
+		//Normalize X
+		for(int i=0; i<snp_count; i++){
+			if(XS(i)==0){
+				for(int j=0; j<IBD_COUNT; j++){
+					if(X(i,j)!=0){
+						X(i,j)=1;
+					}
+				}
+			}
+			else{
+				for(int j=0; j<IBD_COUNT; j++){
+					X(i,j)/=XS(i);
+				}
+			}
+		}
+
+		//Copy X to PIBD
+		ibd_probability=X;
+
+		//New parameter estimates
+		Eigen::Vector3d k_est = Eigen::Vector3d::Zero();
+
+		//Sum of probabilities at each site
+		for(int i=0; i<IBD_COUNT; i++){
+			for(int j=0; j<snp_count; j++){
+				if(mask_snp(j)!=1){ //Mask
+					k_est(i) += X(j,i);
+				}
+			}
+		}
+
+		//Normalized estimates
+		k_est /= k_est.sum();
+
+		// Compute the difference between successive estimates to assess convergence
+		thresh = (k_est-k_values).cwiseAbs().norm();
+        k_values = k_est;
+        iter++;
+	}
+
+	return k_values;
+}
+
 
 //Currently implements inference using the best genotypes (ibs_best)
 Eigen::Vector3d relatedness::em_optimization(
@@ -582,16 +730,20 @@ void relatedness::set_outfile(const char* filename){
 	outfile = std::string(filename);
 }
 
+/*
 void usage(char *program) {
     std::cerr << "Usage: " << program << " <input_file_path> <output_file_path> <genotype>" << std::endl;
     exit(1);
 }
+*/
 
 int main(int argc, char* argv[]){
+
+    std::string versionStr = "v0.5.0";
     TCLAP::CmdLine cmd(
             "lcMLkin",
             ' ',
-            "v 0.5.0");
+            versionStr);
 
     auto defaultNumThreads = std::thread::hardware_concurrency();
     TCLAP::ValueArg<std::string> input("i", "input", "The input VCF file",
@@ -603,14 +755,18 @@ int main(int argc, char* argv[]){
     TCLAP::ValueArg<std::string> type("g", "genotype",
                                       "Which inference algorithm to use; (all | best)",
                                       true, "all", "string");
+    TCLAP::SwitchArg testingFlag("s", "testing", "Only compute results for the first 16 individuals");
+
     cmd.add(input);
     cmd.add(output);
     cmd.add(numThreads);
     cmd.add(type);
+    cmd.add(testingFlag);
     try {
         cmd.parse(argc, argv);
         auto numWorkerThreads = numThreads.getValue();
-
+        std::cerr << "lcMLkin " << versionStr << '\n';
+        std::cerr << "==============================" << '\n';
         std::cerr << "using " << numWorkerThreads << " threads\n";
 
         struct timeval start, end;
@@ -629,7 +785,7 @@ int main(int argc, char* argv[]){
         if (inferenceType == "all") {
             r.set_inference_type(InferenceType::ALL_GENOTYPES);
         } else if (inferenceType == "best") {
-            r.set_inference_type(InferenceType::BEST_GENOTYPES);
+            r.set_inference_type(InferenceType::BEST_GENOTYPE);
         } else {
             std::cerr << "Error: don't understand inference type "
                       << inferenceType << ", must be \"all\" or \"best\"\n";
@@ -646,7 +802,8 @@ int main(int argc, char* argv[]){
         r.calculate_ibs(); //works correctly
 
         std::cout<<"Starting Pairwise IBD Computations"<<std::endl;
-        r.calculate_pairwise_ibd();
+        bool testing = testingFlag.getValue();
+        r.calculate_pairwise_ibd(testing);
 
         gettimeofday(&end, &tzp);
         print_time_elapsed("", &start, &end);

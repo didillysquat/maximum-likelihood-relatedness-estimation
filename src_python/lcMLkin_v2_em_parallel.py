@@ -139,20 +139,31 @@ class RelatednessCalculator(multiprocessing.Process):
                 # The current iteration number
                 it = 0
 
+                XWork = IBS.copy()
+
+                # If we use *all* genotypes
+                if useAllGenotypes:
+                    for i in xrange(9):
+                        # Pr(X_m=j | S_{i,m}) * k_{j}
+                        # Probability of IDB = k given IBS
+                        XWork[i, :, 0] *= GL[i,:]
+                        XWork[i, :, 1] *= GL[i,:]
+                        XWork[i, :, 2] *= GL[i,:]
+
                 # Arbitrary threshold (should be a parameter?)
                 while d > 1e-4:
                     # Num SNPs x 3
-                    X = np.zeros((nr, nc))
-                    X = IBS * k3
-
+                    #X = np.zeros((nr, nc))
+                    #X = IBS * k3
+                    X = XWork * k3
                     # If we use *all* genotypes
                     if useAllGenotypes:
-                        for i in xrange(9):
-                            # Pr(X_m=j | S_{i,m}) * k_{j}
-                            # Probability of IDB = k given IBS
-                            X[i, :, 0] *= GL[i,:]
-                            X[i, :, 1] *= GL[i,:]
-                            X[i, :, 2] *= GL[i,:]
+                        #for i in xrange(9):
+                        #    # Pr(X_m=j | S_{i,m}) * k_{j}
+                        #    # Probability of IDB = k given IBS
+                        #    X[i, :, 0] *= GL[i,:]
+                        #    X[i, :, 1] *= GL[i,:]
+                        #    X[i, :, 2] *= GL[i,:]
                         X = X.sum(axis=0)
 
                     # Normalize the X matrix to contain probabilities
