@@ -1,3 +1,4 @@
+#include <numeric>
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -18,6 +19,26 @@
 #include "relatedness.hpp"
 #include "utils.hpp"
 
+/*
+void relatedness::populate_data_new() {
+
+	VariantCallFile vcfFile;
+	vcfFile.open(infile);
+	if (!vcfFile.is_open()) {
+	    std::cerr << "Error opening input VCF file :[" << infile << "]!\n";
+	    std::exit(1);
+	}
+
+	Variant var(vcfFile);
+	while (vcfFile.getNextVariant(var)) {
+
+
+	}
+
+
+}
+*/
+
 void relatedness::populate_data(){
 
 	//Read the VCF file line by line
@@ -30,21 +51,58 @@ void relatedness::populate_data(){
 	}
   	vcfFile.close();
 
-  	std::vector<std::string> head= split(data[0],'\t');
+  	std::vector<std::string> head = split(data[0],'\t');
   	header = {head.begin()+9, head.end()};
 
-	for(int i=0; i<header.size();i++){
-		if(std::find(unrelated_individuals.begin(), unrelated_individuals.end(), header[i]) != unrelated_individuals.end())
-			unrelated_individual_index.push_back(i);
+	if (haveUnrelatedList_) { // If we have a specific list of unrelated individuals, then use it
+		std::cerr << "have unrelated list\n";
+		std::cerr << "index list = { ";
+		for(int i=0; i<header.size();i++){
+			if(std::find(unrelated_individuals.begin(), unrelated_individuals.end(), header[i]) != unrelated_individuals.end()) {
+				unrelated_individual_index.push_back(i);
+				std::cerr << i << " ";
+			}
+		}
+		std::cerr << "}\n";
+	} else { // Otherwise, assume everyone is unrelated
+	    unrelated_individual_index.resize(header.size());
+	    std::iota(unrelated_individual_index.begin(),
+		      unrelated_individual_index.end(), 0);
 	}
 
+
+	std::string sampleLine;
 	for(auto iter=data.begin()+1; iter!=data.end(); iter++){
-		std::vector<std::string> elements = split(*iter,'\t');
-  		std::copy(elements.begin()+9, elements.end(),elements.begin());
-  		if(elements.size()>1){
-	  		snp_data.push_back(elements);
-  		}
+		if (!(iter->find('#') == 0)) { // If this isn't a comment line
+			// Copy over a sample line to analyze for GQ, GL and GT fields
+			if (sampleLine.empty()) {
+				sampleLine = *iter;
+			}
+			std::vector<std::string> elements = split(*iter,'\t');
+			std::copy(elements.begin()+9, elements.end(),elements.begin());
+			if(elements.size()>1){
+				snp_data.push_back(elements);
+			}
+		}
 	}
+
+	// Determine which indices in INFO are GT, GL and GQ ---
+	// This code assumes it is the same for *all* records!
+	size_t infoIndex = 8;
+	auto info = split(sampleLine, '\t')[infoIndex];
+	auto infoFields = split(info, ':');
+	size_t fieldNum{0};
+	for (auto& f : infoFields) {
+	    if (f == "GT") {
+	        GTIndex = fieldNum;
+	    } else if ( f == "GQ") {
+		GQIndex = fieldNum;
+	    } else if ( f == "GL") {
+		GLIndex = fieldNum;
+	    }
+	    ++fieldNum;
+	}
+	std::cerr << "GTIndex = " << GTIndex << ", GQIndex = " << GQIndex << ", GLIndex = " << GLIndex << "\n";
 
 	snp_count = snp_data.size();
 }
@@ -58,7 +116,7 @@ void relatedness::calculate_allele_frequencies(){
 		std::vector<int> counts;
 
 		for(int id: unrelated_individual_index){
-			std::string geno = split(snp_data[i][id],':')[0];
+			std::string geno = split(snp_data[i][id],':')[GTIndex];
 			if(geno != "./."){
 				counts.push_back(std::stoi(std::string(1,geno.front())));
 				counts.push_back(std::stoi(std::string(1,geno.back())));
@@ -102,43 +160,43 @@ void relatedness::calculate_ibs(){
 }
 
 void relatedness::calculate_pairwise_likelihood(
-        std::pair<int,int> pair,
-        Eigen::MatrixXd& ibs_pairwise,
-        Eigen::VectorXd& mask_snp,
-        std::vector<double>& likelihood_1,
-        std::vector<double>& likelihood_2){
+		std::pair<int,int> pair,
+		Eigen::MatrixXd& ibs_pairwise,
+		Eigen::VectorXd& mask_snp,
+		std::vector<double>& likelihood_1,
+		std::vector<double>& likelihood_2){
 
 	//Parallallize
 	//Iterate through all SNPs
 	for(int j=0; j<snp_count; j++){
 
-	    double p=allele_frequency(j);
-	    double q=1.0-p;
+		double p=allele_frequency(j);
+		double q=1.0-p;
 
 		//Mask SNPs where allele frequency is fixed
 		if (allele_frequency(j) == 1.0 or
-            allele_frequency(j) == 0.0){
-		    mask_snp(j)=1;
+				allele_frequency(j) == 0.0){
+			mask_snp(j)=1;
 		}
 
-	    //Pulls out info field for first individual from VCF, pulls out the three precomputed genotype likelihoods
-		std::vector<StringItPair> l1 = split_it(split_it(snp_data[j][pair.first],':')[3],',');
-		std::vector<StringItPair> l2 = split_it(split_it(snp_data[j][pair.second],':')[3],',');
+		//Pulls out info field for first individual from VCF, pulls out the three precomputed genotype likelihoods
+		std::vector<StringItPair> l1 = split_it(split_it(snp_data[j][pair.first],':')[GLIndex],',');
+		std::vector<StringItPair> l2 = split_it(split_it(snp_data[j][pair.second],':')[GLIndex],',');
 
 		//Assert: l1==l2?
 		//double* likelihood_1 = new double[l1.size()];
 		//double* likelihood_2 = new double[l2.size()];
-        if (likelihood_1.size() < l1.size()) {
-            likelihood_1.resize(l1.size());
-        }
-        if (likelihood_2.size() < l2.size()) {
-            likelihood_2.resize(l2.size());
-        }
+		if (likelihood_1.size() < l1.size()) {
+			likelihood_1.resize(l1.size());
+		}
+		if (likelihood_2.size() < l2.size()) {
+			likelihood_2.resize(l2.size());
+		}
 
 		//Convert likelihoods from strings to floating point numbers
 		for(int k=0; k<l1.size(); k++){
-            char* e1 = &*l1[k].end;
-            char* e2 = &*l2[k].end;
+			char* e1 = &*l1[k].end;
+			char* e2 = &*l2[k].end;
 			likelihood_1[k]=std::strtod(&(*l1[k].begin), &e1);
 			likelihood_2[k]=std::strtod(&(*l2[k].begin), &e2);
 			//If one of those likelihoods comes out as negative (anomaly), we mask those SNPs
@@ -149,16 +207,16 @@ void relatedness::calculate_pairwise_likelihood(
 
 		//Calculate the probability of observing all possible two genotype combinations by multiplying their likelihoods
 		ibs_pairwise(j,0)=(likelihood_1[0]*likelihood_2[2]);
-	    ibs_pairwise(j,1)=(likelihood_1[2]*likelihood_2[0]);
+		ibs_pairwise(j,1)=(likelihood_1[2]*likelihood_2[0]);
 
-	    ibs_pairwise(j,2)=(likelihood_1[0]*likelihood_2[1]);
-	    ibs_pairwise(j,3)=(likelihood_1[1]*likelihood_2[0]);
-	    ibs_pairwise(j,4)=(likelihood_1[1]*likelihood_2[2]);
-	    ibs_pairwise(j,5)=(likelihood_1[2]*likelihood_2[1]);
+		ibs_pairwise(j,2)=(likelihood_1[0]*likelihood_2[1]);
+		ibs_pairwise(j,3)=(likelihood_1[1]*likelihood_2[0]);
+		ibs_pairwise(j,4)=(likelihood_1[1]*likelihood_2[2]);
+		ibs_pairwise(j,5)=(likelihood_1[2]*likelihood_2[1]);
 
-	    ibs_pairwise(j,6)=(likelihood_1[0]*likelihood_2[0]);
-	    ibs_pairwise(j,7)=(likelihood_1[1]*likelihood_2[1]);
-	    ibs_pairwise(j,8)=(likelihood_1[2]*likelihood_2[2]);
+		ibs_pairwise(j,6)=(likelihood_1[0]*likelihood_2[0]);
+		ibs_pairwise(j,7)=(likelihood_1[1]*likelihood_2[1]);
+		ibs_pairwise(j,8)=(likelihood_1[2]*likelihood_2[2]);
 
 		//Clean up
 		//delete[] likelihood_1;
@@ -730,6 +788,19 @@ void relatedness::set_outfile(const char* filename){
 	outfile = std::string(filename);
 }
 
+
+void relatedness::parse_unrelated_individuals(const std::string& file) {
+    std::ifstream inFile(file);
+    if (!inFile.is_open()) {
+        std::cerr << "Couldn't open unrelated individual file [" << file << "]!\n";
+	std::exit(1);
+    }
+    for (std::string line; std::getline(inFile, line);) {
+    	unrelated_individuals.emplace_back(line);
+    }
+    haveUnrelatedList_ = true;
+}
+
 /*
 void usage(char *program) {
     std::cerr << "Usage: " << program << " <input_file_path> <output_file_path> <genotype>" << std::endl;
@@ -756,12 +827,14 @@ int main(int argc, char* argv[]){
                                       "Which inference algorithm to use; (all | best)",
                                       true, "all", "string");
     TCLAP::SwitchArg testingFlag("s", "testing", "Only compute results for the first 16 individuals");
-
+    TCLAP::ValueArg<std::string> unrelatedFile("u", "unrelated", "File containing list of unrelated individuals",
+		    			       false, "", "path");
     cmd.add(input);
     cmd.add(output);
     cmd.add(numThreads);
     cmd.add(type);
     cmd.add(testingFlag);
+    cmd.add(unrelatedFile);
     try {
         cmd.parse(argc, argv);
         auto numWorkerThreads = numThreads.getValue();
@@ -780,6 +853,11 @@ int main(int argc, char* argv[]){
         r.set_infile(inputFileName.c_str());
         r.set_outfile(outputFileName.c_str());
         r.set_num_workers(numWorkerThreads);
+
+	if (unrelatedFile.isSet()) {
+	  std::string& unrelatedFileName = unrelatedFile.getValue();
+	  r.parse_unrelated_individuals(unrelatedFileName);
+	}
 
         auto inferenceType = type.getValue();
         if (inferenceType == "all") {
