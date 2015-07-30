@@ -21,7 +21,7 @@ std::vector<std::string> split(std::string &s, char delim) {
 
     // implementation 2.0
     std::vector<std::string> elements2;
-    auto it = s.begin();
+    //auto it = s.begin();
     size_t start = 0;
     size_t next = 0;
     while ((next = s.find_first_of(delim, start)) != std::string::npos) {

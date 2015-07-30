@@ -172,11 +172,10 @@ void relatedness::calculate_pairwise_likelihood(
 	for(int j=0; j<snp_count; j++){
 
 		double p=allele_frequency(j);
-		double q=1.0-p;
+		// double q=1.0-p;
 
 		//Mask SNPs where allele frequency is fixed
-		if (allele_frequency(j) == 1.0 or
-				allele_frequency(j) == 0.0){
+		if (p == 1.0 or p == 0.0){
 			mask_snp(j)=1;
 		}
 
@@ -263,7 +262,7 @@ void pairwiseLikelihoodWorker(
 
         for(size_t j = 0; j < relateObj.getSNPCount(); j++){
             Eigen::MatrixXf::Index bestIndex;
-            double max = ibs_pairwise.row(j).maxCoeff(&bestIndex);
+            ibs_pairwise.row(j).maxCoeff(&bestIndex);
             for(int k=0; k<IBD_COUNT; k++){
                 ibs_best(j,k) = ibs_all(bestIndex)(j,k);
             }
@@ -515,7 +514,7 @@ double relatedness::kin(std::pair<double,double> k12){
 	k << k0,k1,k2;
 
 	Eigen::VectorXd ibs_k_sum = Eigen::VectorXd::Zero(snp_count);
-	double ibs_sum;
+	double ibs_sum{0.0};
 	for(int i=0; i<snp_count; i++){
 		for(int j=0; j<IBD_COUNT;j++){
 			ibs_k_sum(i)+=ibs_best(i,j)*k(j);
@@ -557,7 +556,7 @@ double relatedness::gl_kin(std::pair<double,double> k12){
 
 	Eigen::MatrixXd ibs_k = Eigen::MatrixXd::Zero(GENOTYPE_COUNT,snp_count);
 	Eigen::VectorXd ibs_k_sum = Eigen::VectorXd::Zero(snp_count);
-	double ibs_sum;
+	double ibs_sum{0.0};
 
 	for(int i=0; i<GENOTYPE_COUNT; i++){
 		for(int j=0; j<snp_count; j++){

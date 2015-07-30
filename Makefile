@@ -1,6 +1,6 @@
-CC	= g++
+CXX ?= c++
 CFLAGS = -Wall -Werror -fmax-errors=3
-CCFLAGS = -pthread
+CCFLAGS = -pthread -Wall
 LIBARG	= -g -std=c++11 -O3
 EIGEN = include
 INC = -I $(EIGEN)
@@ -9,7 +9,7 @@ FILES = relatedness utils
 SRC	= $(addprefix src/, $(addsuffix .cpp, $(FILES))) #src/filevercmp.c
 
 $(TARGET): $(SRC)
-	$(CC) $(CCFLAGS) $(SRC) $(LIBARG) $(INC) -o $@
+	$(CXX) $(CCFLAGS) $(SRC) $(LIBARG) $(INC) -o $@
 
 clean:
 	rm -f $(TARGET)
