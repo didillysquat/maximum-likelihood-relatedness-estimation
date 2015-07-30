@@ -1,6 +1,8 @@
 lcMLkin (Maximum Likelihood Estimation of Relatedness)
 ======================================================
 
+[![Join the chat at https://gitter.im/COMBINE-lab/maximum-likelihood-relatedness-estimation](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/COMBINE-lab/maximum-likelihood-relatedness-estimation?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
 How to Compile:
 
 *Note:  This code requires a C++11 compliant compiler.  g++ >= 4.7.3 and clang >= 3.4 should be OK*
@@ -22,3 +24,4 @@ Producing VCF input from BAM files
 -----------------------------------
 
 A preliminary implementation of a script to generate lcMLkin-ready VCF files from a set of indexed BAM files is available under the `src_python/SNPbam2vcf` directory of the repository ([here](https://github.com/COMBINE-lab/maximum-likelihood-relatedness-estimation/tree/master/src_python/SNPbam2vcf)).  There, you will find more information on the script including usage examples.
+
