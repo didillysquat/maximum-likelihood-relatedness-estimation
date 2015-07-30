@@ -1,5 +1,5 @@
 lcMLkin (Maximum Likelihood Estimation of Relatedness)
---------------------------------------------
+======================================================
 
 How to Compile:
 
@@ -17,3 +17,8 @@ to get help.  A typical run would look something like:
 4.) `> lcmlkin -i input.vcf -o output.relate -g all -t 8`
 
 This will run `lcmlkin` on the file `input.vcf`, estimate background allele frequencies assuming all individuals are unrelated, and using the variant of the algorithm that sums over all genotypes given their likelihoods (`-g all`).  It will write the output to the file `output.relate`, and will make use of up to 8 worker threads (`-t 8`).
+
+Producing VCF input from BAM files
+-----------------------------------
+
+A preliminary implementation of a script to generate lcMLkin-ready VCF files from a set of indexed BAM files is available under the `src_python/SNPbam2vcf` directory of the repository ([here](https://github.com/COMBINE-lab/maximum-likelihood-relatedness-estimation/tree/master/src_python/SNPbam2vcf)).  There, you will find more information on the script including usage examples.
