@@ -5,7 +5,7 @@ Readme for SNPbam2vcf.py
 
 *  Please note it is slow, and is only designed for calling genotypes for specific SNPs in smallish numbers (tens to hundreds) of individuals. I do not recommend using this as a general variant caller.
 
-*  We are working on a better version (this was an experimental one developed to test lcMLkin), but for now, if using 100 samples with 100K loci with 20x mean coverage takes about 4 hours on our machine. Lower coverage datasets, which is what lcMLkin is designed for, will be quicker though, maybe just over an hour.
+*  We are working on a better version (this was an experimental one developed to test lcMLkin), but for now, if using 100 samples with 100K loci with 20x mean coverage, this takes about 4 hours on one processor. Lower coverage datasets, which is what lcMLkin is designed for, will be quicker though, maybe just over an hour.
 
 *  [Pysam](http://pysam.readthedocs.org/en/latest/) and [Numpy](http://www.numpy.org/) must be installed in the version of python used.
 
