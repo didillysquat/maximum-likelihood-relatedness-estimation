@@ -1,14 +1,16 @@
 #!/usr/bin/env python
 # -*- coding: ASCII -*-
 
-#####This python script that takes a list of bamfiles and performs variant calling such that the output is in the format required for lcMLkin to calculate pairwise relatedness.
-#####Please note it is very slow, and is only designed for calling genotypes for specific SNPs. I do not recommend using this as a general variant caller.
-#####We are working on a better parser (this was an experimental one developed to test lcMLkin), but for now, if using 100 samples with 100K loci, it may need to run overnight.
-#####Pysam and numpy must be installed in the version of python used
-#####Bam files must be indexed. The SNPfile must have the tab seperated fields in the following order: chromosome, position (one-based), reference allele, alternate allele
-#####Written (poorly) by Krishna Veeramah
+#####This python script takes a list of bamfiles and performs variant calling such that the output is in the format required for lcMLkin to calculate pairwise relatedness.
+#####Please note it is slow, and is only designed for calling genotypes for specific SNPs in smallish numbers (tens to hundreds) of individuals. I do not recommend using this as a general variant caller.
+#####We are working on a better version (this was an experimental one developed to test lcMLkin), but for now, if using 100 samples with 100K loci with 20x mean coverage takes about 4 hours on our machine. Lower coverage datasets, which is what lcMLkin is designed for, will be quicker though, maybe just over an hour.
+#####Pysam and Numpy must be installed in the version of python used.
+#####Bam files must be indexed.
+#####The SNP file must have the tab seperated fields in the following order: chromosome, position (one-based), reference allele, alternate allele
+#####If you want to change things like mapping and base quality threshold, edit the python code under the section "Input arguments"
+#####Written (poorly) by Krishna Veeramah (krishna.veeramah@stonybrook.edu)
 
-#####usage is ./SNPbam2vcf.py <bamlist> <fileoutname> <target_SNP_file>'
+#####usage is ./SNPbam2vcf.py <bamlist> <fileoutname> <target_SNP_file>
 
 
 ###import libraries
@@ -19,18 +21,18 @@ import gzip
 import math
 import copy
 from sys import argv
-
+import time
 
 ###Input arguments
 BAMin=argv[1] #flat text file consisiting of list of bams (must be indexed), one per line
 filenameout=argv[2] #creates a vcf
 SNPfile=argv[3] #must have the tab seperated fields in the following order chromosome, position (one-based), reference allele, alternate allele
-BC=0 #choose whether to use the bayesian caller for individual genotypes (0=no, 1=yes). I don't recommend turning this on the current  version, as it's quite slow, and allele frequencies shouldn't really be biased if the genotypes are incorreclty called, especially as the genotype calling is not reference aware
+BC=0 #choose whether to use the bayesian caller for individual genotypes (0=no, 1=yes). I don't recommend turning this on the current  version, as it's quite slow, and allele frequencies shouldn't really be biased if the genotypes are incorreclty called, especially as the genotype calling we use is not reference aware
 MQ_t=20 #mapping quality threshold
 BQ_t=5 #base_qualitythreshold
 GQ_t=0.1 #GQ threshold
 min_sams=1 #minimum samples with reads at locus needed to attempt bayesian calling of genotypes
-
+exc_fix=0  #exclude fixed differences (doesn't make much sense to turn on if only looking at one sample
 
 ###converts phred score to probability
 def phred2prob(x):
@@ -42,8 +44,8 @@ def prob2phred(x):
 
 ###diploid caller assuming all alternative alleles are possible (error is divided by three for now, could add a more complex model)
 def geno_caller_10GT(X):
-   
-    GL=np.zeros(10)   #all 10 possible genotypes and order = AA,AC,AG,AT,CC,CG,CT,GG,GT,TT
+  
+		GL=np.zeros(10)   #all 10 possible genotypes and order = AA,AC,AG,AT,CC,CG,CT,GG,GT,TT
     hap=np.zeros((len(X),4))  #all 4 haploid possibilities, A,C,G,T
 
     all_dic={}
@@ -75,22 +77,67 @@ def geno_caller_10GT(X):
         count+=1
 
     if count==0:
-        GL.fill(-9)
+        GL.fill(-9.0)
+    return GL
+
+all_dic={}
+all_dic['A']=0
+all_dic['C']=1
+all_dic['G']=2
+all_dic['T']=3
+
+def geno_caller_3GT(X,ref,alt,all_dic):
+    #diploid caller assuming that only assesses likelihood for three possible genotypes (ref/ref,ref/alt,alt/alt)           
+    GL=[0.0,0.0,0.0]
+
+    count=0
+    for g in range(len(X)):
+        if all_dic.has_key(X[g][0])==False:
+            continue
+        err=phred2prob(X[g][1])*(1.0/3.0)
+        tru=1-phred2prob(X[g][1])*(1.0/3.0)
+        
+        if X[g][0]==ref:
+            GL[0]=GL[0]+math.log10(tru)
+            GL[1]=GL[1]+math.log10((tru+err)/2)
+            GL[2]=GL[2]+math.log10(err)           
+        elif X[g][0]==alt:
+            GL[0]=GL[0]+math.log10(err)
+            GL[1]=GL[1]+math.log10((tru+err)/2)
+            GL[2]=GL[2]+math.log10(tru)  
+        else:
+            GL[0]=GL[0]+math.log10(err) 
+            GL[1]=GL[1]+math.log10(err)
+            GL[2]=GL[2]+math.log10(err)
+        count+=1
+
+    if count==0:
+        GL=[-9.0,-9.0,-9.0]
     return GL
 
 
 ###extract reads for a give position in a bam
 def extract_bam_SNP(samfile,chromo,pos,BQ,MQ):
     var_list=[]
-    for pileupcolumn in samfile.pileup(chromo,pos-1,pos):
-        if pileupcolumn.pos==pos-1:
-            for pileupread in pileupcolumn.pileups:
-                if not pileupread.is_del and not pileupread.is_refskip:
-                    if pileupread.alignment.mapping_quality>=MQ:
-                        if pileupread.alignment.is_duplicate==False:
-                            if ord(pileupread.alignment.qual[pileupread.query_position])-33>=BQ:
-                                var_list.append([pileupread.alignment.query_sequence[pileupread.query_position],ord(pileupread.alignment.qual[pileupread.query_position])-33])
+    for pileupcolumn in samfile.pileup(chromo,pos-1,pos,truncate=True,stepper='all'):
+        for pileupread in pileupcolumn.pileups:
+            if not pileupread.is_del and not pileupread.is_refskip:
+                if (pileupread.alignment.mapping_quality>=MQ) and (ord(pileupread.alignment.qual[pileupread.query_position])-33>=BQ):
+                        var_list.append([pileupread.alignment.query_sequence[pileupread.query_position],ord(pileupread.alignment.qual[pileupread.query_position])-33])
     return var_list
+
+#####extract reads for a give position in a bam (original version of above,not clear which is faster)
+##def extract_bam_SNP(samfile,chromo,pos,BQ,MQ):
+##    var_list=[]
+##    for pileupcolumn in samfile.pileup(chromo,pos-1,pos):
+##        if pileupcolumn.pos==pos-1:
+##            for pileupread in pileupcolumn.pileups:
+##                if not pileupread.is_del and not pileupread.is_refskip:
+##                    if pileupread.alignment.mapping_quality>=MQ:
+##                        if pileupread.alignment.is_duplicate==False:
+##                            if ord(pileupread.alignment.qual[pileupread.query_position])-33>=BQ:
+##                                var_list.append([pileupread.alignment.query_sequence[pileupread.query_position],ord(pileupread.alignment.qual[pileupread.query_position])-33])
+##    return var_list
 
 
 ###Version of Depristo's bayesian caller
@@ -193,14 +240,17 @@ if SNPs[-1]=='':
    
 
 sample_name=[]
+samfiles={}
 ###Get sample name for each bam. Each bam must only contain one sample, otherwise the program will take the sample in first readgroup in the header
 for g in range(len(samples)):
-    samfile = pysam.AlignmentFile(samples[g], "rb")
-    sample_name.append(samfile.header['RG'][0]['ID'])
+    samfiles[g] = pysam.AlignmentFile(samples[g], "rb")
+    sample_name.append(samfiles[g].header['RG'][0]['ID'])
+
 
 ###start writing outfile with header
 outfile=open(filenameout,'w')
 out='##Custom variant caller for_lcMLkin\n##Bayesian_caller='+str(BC)+',MappingQuality_filter='+str(MQ_t)+',BaseQuality_filter='+str(BQ_t)+',GenotypeQuality_filter='+str(GQ_t)+',bamlist='+BAMin+',filenameout='+filenameout+',SNPfile='+SNPfile+'\n'
+out=out+'##Time created: '+(time.strftime("%H:%M:%S"))+' '+(time.strftime("%d/%m/%Y"))+'\n'
 out=out+'#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT'
 for x in sample_name:
     out=out+'\t'+x
@@ -224,24 +274,14 @@ for g in range(len(SNPs)):
     GLs_nomiss=[]
     GQs=[]
     GTs=[]
-    GTs=[]
-    AD=[]
+
     for gg in range(len(samples)):
         ###extract reads for a position
-        samfile = pysam.AlignmentFile(samples[gg], "rb")
-        read_list=extract_bam_SNP(samfile,chromo,pos,BQ_t,MQ_t)
+        read_list=extract_bam_SNP(samfiles[gg],chromo,pos,BQ_t,MQ_t)
 
-        ###get allele depth infomation
-        if len(read_list)>0:
-            alls=list(zip(*read_list))[0]
-            AD.append([alls.count(ref),alls.count(alt)])
-        else:
-            AD.append([0,0])
 
         ###get the genotype likelihood for the 3 possible genotypes based on the ref and alt alleles provided
-        ll=geno_caller_10GT(read_list)        
-        GL=[ll[geno_ord[ref+ref]],ll[geno_ord[ref+alt]],ll[geno_ord[alt+alt]]]
-        GLs.append(GL)
+        GL=geno_caller_3GT(read_list,ref,alt,all_dic)
         
         ###calcule genotype quality
         GL_sort=copy.deepcopy(GL)
@@ -259,39 +299,59 @@ for g in range(len(SNPs)):
                 GTs.append(vcf_gt[np.argmax(np.asarray(GL))])
             else:
                 GTs.append('./.')
+                GLs
+        GLs.append(GL)
+        
+    skip=0
 
+    ###estimate allele frequencies for multisample calling
     if BC==1:
         if len(GLs_nomiss)>min_sams:  #must have genotype data for at least 20 individuals to consider SNP
             genos_b,VQ,s=bayes_caller(GLs_nomiss)
             AF=(np.sum(genos_b)/(float(len(genos_b))*2))
             it=0
             for ggg in range(len(GLs)):
-                if -9.0 in GLs[gg]:
+                if -9.0 in GLs[ggg]:
                     GTs.append('./.')
                 else:
                     GTs.append(vcf_gt[genos_b[it]])
                     it+=1
                 
         else:
-            AF=0.0
+            skip=1
                 
     ###estimate allele frequencies for single-base calling
     elif BC==0:
-         AF=(GTs.count('0/1')+GTs.count('1/1')*2) / (float((len(GTs)-GTs.count('./.')))*2)
-         VQ=100
-         s='ALT'
-
+        if (float((len(GTs)-GTs.count('./.')))*2)<>0.0:
+            AF=1-((GTs.count('0/1')+GTs.count('1/1')*2) / (float((len(GTs)-GTs.count('./.')))*2))
+            VQ=100
+            s='ALT'
+        else:
+            skip=1
+            
     ###only write to file if site is variable (otherwise useless for kinship estimation)
-    if 0.0<AF<1.0:                        
-        out=k[0]+'\t'+k[1]+'\t.\t'+k[2]+'\t'+k[3]+'\t'+str(VQ)+'\t'+s+'\tALT_AF='+str(AF)+'\tGT:DP:AD:GL:GQ'
+    if skip==0:
+        out=k[0]+'\t'+k[1]+'\t.\t'+k[2]+'\t'+k[3]+'\t'+str(VQ)+'\t'+s+'\tALT_AF='+str(AF)+'\tGT:GL:GQ'
+        if exc_fix==0: ###Don't throw out sites that are fixed. If examining only a few or one individual, and population allele frequencies in lcMLkin come from elsewhere, this setting makes sense to use. 
+            for ggg in range(len(GTs)):
+                if GTs[ggg]=='./.':
+                    out=out+'\t'+GTs[ggg]+':'+str(GLs[ggg][0])+','+str(GLs[ggg][1])+','+str(GLs[ggg][2])+':'+str(int(round(GQs[ggg])))
+                else:
+                    out=out+'\t'+GTs[ggg]+':'+str(10**GLs[ggg][0])+','+str(10**GLs[ggg][1])+','+str(10**GLs[ggg][2])+':'+str(int(round(GQs[ggg])))
 
-        for ggg in range(len(GTs)):
-            out=out+'\t'+GTs[ggg]+':'+str(sum(AD[ggg]))+':'+str(AD[ggg][0])+','+str(AD[ggg][1])+':'+str(10**GLs[ggg][0])+','+str(10**GLs[ggg][1])+','+str(10**GLs[ggg][2])+':'+str(int(round(GQs[ggg])))
+        elif 0.0<AF<1.0:###Only include SNPs that are variable in the final VCF                        
+            for ggg in range(len(GTs)):
+                if GTs[ggg]=='./.':
+                    out=out+'\t'+GTs[ggg]+':'+str(GLs[ggg][0])+','+str(GLs[ggg][1])+','+str(GLs[ggg][2])+':'+str(int(round(GQs[ggg])))
+                else:
+                    out=out+'\t'+GTs[ggg]+':'+str(10**GLs[ggg][0])+','+str(10**GLs[ggg][1])+','+str(10**GLs[ggg][2])+':'+str(int(round(GQs[ggg])))
 
         out=out+'\n'
         outfile.write(out)                                                                                  
 
     if g%100==0:
-        print 'Processed up to ' +chromo+':'+str(pos)+', SNP nb = '+str(g)
+        print 'Processed '+BAMin+' up to ' +chromo+':'+str(pos)+', SNP nb = '+str(g)
 
 outfile.close()
+
+print 'Finished. Laterz'
