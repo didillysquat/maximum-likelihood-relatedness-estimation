@@ -244,14 +244,14 @@ samfiles={}
 ###Get sample name for each bam. Each bam must only contain one sample, otherwise the program will take the sample in first readgroup in the header
 for g in range(len(samples)):
     samfiles[g] = pysam.AlignmentFile(samples[g], "rb")
-    sample_name.append(samfiles[g].header['RG'][0]['ID'])
+    sample_name.append(samfiles[g].header['RG'][0]['SM'])
 
 
 ###start writing outfile with header
 outfile=open(filenameout,'w')
-out='##Custom variant caller for_lcMLkin\n##Bayesian_caller='+str(BC)+',MappingQuality_filter='+str(MQ_t)+',BaseQuality_filter='+str(BQ_t)+',GenotypeQuality_filter='+str(GQ_t)+',bamlist='+BAMin+',filenameout='+filenameout+',SNPfile='+SNPfile+'\n'
-out=out+'##Time created: '+(time.strftime("%H:%M:%S"))+' '+(time.strftime("%d/%m/%Y"))+'\n'
-out=out+'#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT'
+#out='##Custom variant caller for_lcMLkin\n##Bayesian_caller='+str(BC)+',MappingQuality_filter='+str(MQ_t)+',BaseQuality_filter='+str(BQ_t)+',GenotypeQuality_filter='+str(GQ_t)+',bamlist='+BAMin+',filenameout='+filenameout+',SNPfile='+SNPfile+'\n'
+#out=out+'##Time created: '+(time.strftime("%H:%M:%S"))+' '+(time.strftime("%d/%m/%Y"))+'\n'
+out='#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT'
 for x in sample_name:
     out=out+'\t'+x
     
