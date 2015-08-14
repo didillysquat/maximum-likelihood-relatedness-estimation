@@ -90,7 +90,7 @@ void relatedness::populate_data(){
 			}
 			std::vector<std::string> elements = split(*iter,'\t');
 			std::vector<std::string> elementsOut;
-			std::copy(elements.begin()+9, elements.end(), elementsOut.begin());
+			std::copy(elements.begin()+9, elements.end(), std::back_inserter(elementsOut));
 			if(elementsOut.size()>1){
 				snp_data.push_back(elementsOut);
 			}

@@ -76,18 +76,13 @@ void Variant::parse(string& line, bool parseSamples) {
             }
             vector<string> samplefields = split(*sample, ':');
             vector<string>::iterator i = samplefields.begin();
-            if (samplefields.size() != format.size()) {
-                // ignore this case... malformed (or 'null') sample specs are caught above
-                // /*
-                // cerr << "inconsistent number of fields for sample " << name << endl
-                //      << "format is " << join(format, ":") << endl
-                //      << "sample is " << *sample << endl;
-                // exit(1);
-                // *
-            }
-            else {
-                for (vector<string>::iterator f = format.begin(); f != format.end(); ++f) {
-                    samples[name][*f] = split(*i, ','); ++i;
+            for (vector<string>::iterator f = format.begin(); f != format.end(); ++f) {
+                // trailing fields may be dropped according to vcf4.2 spec, so allow that
+                if( i != samplefields.end() ){
+                    samples[name][*f] = split(*i, ',');
+                    ++i;
+                }else{
+                    samples[name][*f].push_back(".");
                 }
             }
         }
@@ -1114,7 +1109,6 @@ vector<string> VariantCallFile::getHeaderLinesFromFile()
 {
     string headerStr = "";
 
-    /*
     if (usingTabix) {
         tabixFile->getHeader(headerStr);
         if (headerStr.empty()) {
@@ -1124,7 +1118,6 @@ vector<string> VariantCallFile::getHeaderLinesFromFile()
         tabixFile->getNextLine(line);
         firstRecord = true;
     } else {
-    */
         while (std::getline(*file, line)) {
             if (line.substr(0,1) == "#") {
                 headerStr += line + '\n';
@@ -1138,16 +1131,14 @@ vector<string> VariantCallFile::getHeaderLinesFromFile()
                 break;
             }
         }
-    /* no tabix
     }
-    */
     return split(headerStr, "\n");
 }
 
 bool VariantCallFile::parseHeader(void) {
 
     string headerStr = "";
-    /* no tabix
+
     if (usingTabix) {
         tabixFile->getHeader(headerStr);
         if (headerStr.empty()) {
@@ -1157,7 +1148,6 @@ bool VariantCallFile::parseHeader(void) {
         tabixFile->getNextLine(line);
         firstRecord = true;
     } else {
-    */
         while (std::getline(*file, line)) {
             if (line.substr(0,1) == "#") {
                 headerStr += line + '\n';
@@ -1171,9 +1161,7 @@ bool VariantCallFile::parseHeader(void) {
                 break;
             }
         }
-    /* no tabix
     }
-    */
     this->vcf_header = headerStr;
 
     return parseHeader(headerStr);
@@ -1275,7 +1263,6 @@ bool VariantCallFile::getNextVariant(Variant& var) {
                 return false;
             }
         }
-	/* no tabix
         if (usingTabix) {
             if (justSetRegion && !line.empty() && line.substr(0,1) != "#") {
                 if (firstRecord) {
@@ -1295,7 +1282,6 @@ bool VariantCallFile::getNextVariant(Variant& var) {
                 return false;
             }
         } else {
-	*/
             if (std::getline(*file, line)) {
                 var.parse(line, parseSamples);
                 _done = false;
@@ -1304,9 +1290,7 @@ bool VariantCallFile::getNextVariant(Variant& var) {
                 _done = true;
                 return false;
             }
-	/* no tabix
         }
-	*/
 }
 
 bool VariantCallFile::setRegion(string seq, long int start, long int end) {
@@ -1320,8 +1304,6 @@ bool VariantCallFile::setRegion(string seq, long int start, long int end) {
 }
 
 bool VariantCallFile::setRegion(string region) {
-    return  false;
-    /* no tabix
     if (!usingTabix) {
         cerr << "cannot setRegion on a non-tabix indexed file" << endl;
         exit(1);
@@ -1341,7 +1323,6 @@ bool VariantCallFile::setRegion(string region) {
     } else {
         return false;
     }
-    */
 }
 
 
@@ -1498,7 +1479,6 @@ string varCigar(vector<VariantAllele>& vav, bool xForMismatch) {
     return cigar;
 }
 
-/*
 map<string, vector<VariantAllele> > Variant::parsedAlternates(bool includePreviousBaseForIndels,
                                                               bool useMNPs,
                                                               bool useEntropy,
@@ -1669,7 +1649,6 @@ map<string, vector<VariantAllele> > Variant::parsedAlternates(bool includePrevio
 
     return variantAlleles;
 }
-*/
 
 map<string, vector<VariantAllele> > Variant::flatAlternates(void) {
     map<string, vector<VariantAllele> > variantAlleles;

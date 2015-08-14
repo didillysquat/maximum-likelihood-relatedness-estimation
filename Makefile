@@ -5,7 +5,7 @@ LIBARG	= -g -std=c++11 -O3
 EIGEN = include
 INC = -I $(EIGEN)
 TARGET	= lcmlkin #Variant split 
-FILES = relatedness utils
+FILES = relatedness utils #Variant
 SRC	= $(addprefix src/, $(addsuffix .cpp, $(FILES))) #src/filevercmp.c
 
 $(TARGET): $(SRC)
