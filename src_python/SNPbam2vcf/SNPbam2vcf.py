@@ -244,7 +244,7 @@ samfiles={}
 ###Get sample name for each bam. Each bam must only contain one sample, otherwise the program will take the sample in first readgroup in the header
 for g in range(len(samples)):
     samfiles[g] = pysam.AlignmentFile(samples[g], "rb")
-    sample_name.append(samfiles[g].header['RG'][0]['ID'])
+    sample_name.append(samfiles[g].header['RG'][0]['SM'])
 
 
 ###start writing outfile with header
