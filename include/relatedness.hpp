@@ -55,6 +55,8 @@ public:
 
 	void parse_unrelated_individuals(const std::string& file);
 
+	void populate_data_new();
+
 	void populate_data();
 
 	void calculate_allele_frequencies();

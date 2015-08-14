@@ -11,7 +11,7 @@
 #include <math.h>
 #include <limits>
 
-
+#include "Variant.h"
 // #include <omp.h>
 #include "tclap/CmdLine.h"
 #include "spdlog/spdlog.h"
@@ -19,17 +19,36 @@
 #include "relatedness.hpp"
 #include "utils.hpp"
 
-/*
-void relatedness::populate_data_new() {
 
-	VariantCallFile vcfFile;
+void relatedness::populate_data_new() {
+	auto logger = spdlog::get("jointLog");
+
+	vcflib::VariantCallFile vcfFile;
 	vcfFile.open(infile);
 	if (!vcfFile.is_open()) {
 	    std::cerr << "Error opening input VCF file :[" << infile << "]!\n";
 	    std::exit(1);
 	}
 
-	Variant var(vcfFile);
+	// Create the unrelated individual list
+	if (haveUnrelatedList_) { // If we have a specific list of unrelated individuals, then use it
+		std::cerr << "have unrelated list\n";
+		std::cerr << "index list = { ";
+		for(int i=0; i<header.size();i++){
+			if(std::find(unrelated_individuals.begin(), unrelated_individuals.end(), header[i]) != unrelated_individuals.end()) {
+				unrelated_individual_index.push_back(i);
+				std::cerr << i << " ";
+			}
+		}
+		std::cerr << "}\n";
+	} else { // Otherwise, assume everyone is unrelated
+	    unrelated_individual_index.resize(header.size());
+	    std::iota(unrelated_individual_index.begin(),
+		      unrelated_individual_index.end(), 0);
+	}
+
+
+	vcflib::Variant var(vcfFile);
 	while (vcfFile.getNextVariant(var)) {
 
 
@@ -37,7 +56,7 @@ void relatedness::populate_data_new() {
 
 
 }
-*/
+
 
 void relatedness::populate_data(){
 
@@ -853,6 +872,8 @@ int main(int argc, char* argv[]){
         std::cerr << "==============================" << '\n';
         std::cerr << "using " << numWorkerThreads << " threads\n";
 
+
+
         struct timeval start, end;
         struct timezone tzp;
         gettimeofday(&start, &tzp);
@@ -864,6 +885,15 @@ int main(int argc, char* argv[]){
         r.set_infile(inputFileName.c_str());
         r.set_outfile(outputFileName.c_str());
         r.set_num_workers(numWorkerThreads);
+
+
+	std::ofstream logStream(outputFileName + ".log");
+
+	std::vector<spdlog::sink_ptr> sinks;
+        sinks.push_back(std::make_shared<spdlog::sinks::stderr_sink_mt>());
+        sinks.push_back(std::make_shared<spdlog::sinks::ostream_sink_mt>(logStream)); 
+        auto combinedLogger = std::make_shared<spdlog::logger>("jointLog", std::begin(sinks), std::end(sinks));
+        spdlog::register_logger(combinedLogger);
 
 	if (unrelatedFile.isSet()) {
 	  std::string& unrelatedFileName = unrelatedFile.getValue();
@@ -896,6 +926,10 @@ int main(int argc, char* argv[]){
 
         gettimeofday(&end, &tzp);
         print_time_elapsed("", &start, &end);
+
+	combinedLogger->flush();
+	logStream.close();
+
     } catch (TCLAP::ArgException& e) {
         std::cerr << "Exception [" << e.error() << "] when parsing argument "
             << e.argId() << '\n';

@@ -1,4 +1,5 @@
 #include "Variant.h"
+#include <algorithm>
 #include <utility>
 
 namespace vcflib {
@@ -671,7 +672,7 @@ VariantFieldType Variant::infoType(string& key) {
 // "GT = 1/1 | GT = 0/0"
 //
 // on initialization, tokenizes the input sequence, and converts it from infix to postfix
-// on call to 
+// on call to
 //
 
 
@@ -771,7 +772,7 @@ VariantFieldType Variant::infoType(string& key) {
                 }
             }
             results.push(token);
-        } 
+        }
         // apply operators to the first n elements on the stack and push the result back onto the stack
         else if (isOperator(token)) {
             //cerr << "is operator: " << token.value << endl;
@@ -1109,6 +1110,7 @@ vector<string> VariantCallFile::getHeaderLinesFromFile()
 {
     string headerStr = "";
 
+    /*
     if (usingTabix) {
         tabixFile->getHeader(headerStr);
         if (headerStr.empty()) {
@@ -1118,6 +1120,7 @@ vector<string> VariantCallFile::getHeaderLinesFromFile()
         tabixFile->getNextLine(line);
         firstRecord = true;
     } else {
+    */
         while (std::getline(*file, line)) {
             if (line.substr(0,1) == "#") {
                 headerStr += line + '\n';
@@ -1131,7 +1134,7 @@ vector<string> VariantCallFile::getHeaderLinesFromFile()
                 break;
             }
         }
-    }
+    //}
     return split(headerStr, "\n");
 }
 
@@ -1139,6 +1142,7 @@ bool VariantCallFile::parseHeader(void) {
 
     string headerStr = "";
 
+    /*
     if (usingTabix) {
         tabixFile->getHeader(headerStr);
         if (headerStr.empty()) {
@@ -1148,6 +1152,7 @@ bool VariantCallFile::parseHeader(void) {
         tabixFile->getNextLine(line);
         firstRecord = true;
     } else {
+    */
         while (std::getline(*file, line)) {
             if (line.substr(0,1) == "#") {
                 headerStr += line + '\n';
@@ -1161,7 +1166,9 @@ bool VariantCallFile::parseHeader(void) {
                 break;
             }
         }
+        /*
     }
+    */
     this->vcf_header = headerStr;
 
     return parseHeader(headerStr);
@@ -1263,6 +1270,7 @@ bool VariantCallFile::getNextVariant(Variant& var) {
                 return false;
             }
         }
+        /*
         if (usingTabix) {
             if (justSetRegion && !line.empty() && line.substr(0,1) != "#") {
                 if (firstRecord) {
@@ -1282,6 +1290,7 @@ bool VariantCallFile::getNextVariant(Variant& var) {
                 return false;
             }
         } else {
+        */
             if (std::getline(*file, line)) {
                 var.parse(line, parseSamples);
                 _done = false;
@@ -1290,7 +1299,9 @@ bool VariantCallFile::getNextVariant(Variant& var) {
                 _done = true;
                 return false;
             }
+            /*
         }
+        */
 }
 
 bool VariantCallFile::setRegion(string seq, long int start, long int end) {
@@ -1308,6 +1319,8 @@ bool VariantCallFile::setRegion(string region) {
         cerr << "cannot setRegion on a non-tabix indexed file" << endl;
         exit(1);
     }
+    return false;
+    /*
     size_t dots = region.find("..");
     // convert between bamtools/freebayes style region string and tabix/samtools style
     if (dots != string::npos) {
@@ -1323,6 +1336,7 @@ bool VariantCallFile::setRegion(string region) {
     } else {
         return false;
     }
+    */
 }
 
 
@@ -1479,6 +1493,7 @@ string varCigar(vector<VariantAllele>& vav, bool xForMismatch) {
     return cigar;
 }
 
+/*
 map<string, vector<VariantAllele> > Variant::parsedAlternates(bool includePreviousBaseForIndels,
                                                               bool useMNPs,
                                                               bool useEntropy,
@@ -1586,7 +1601,7 @@ map<string, vector<VariantAllele> > Variant::parsedAlternates(bool includePrevio
             switch (type.at(0)) {
             case 'I':
                 if (includePreviousBaseForIndels) {
-                    if (!variants.empty() && 
+                    if (!variants.empty() &&
                         variants.back().ref != variants.back().alt) {
                         VariantAllele a = VariantAllele("", alternate.substr(altpos, len), refpos + position);
                         variants.back() = variants.back() + a;
@@ -1649,6 +1664,7 @@ map<string, vector<VariantAllele> > Variant::parsedAlternates(bool includePrevio
 
     return variantAlleles;
 }
+*/
 
 map<string, vector<VariantAllele> > Variant::flatAlternates(void) {
     map<string, vector<VariantAllele> > variantAlleles;
