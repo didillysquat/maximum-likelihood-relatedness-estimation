@@ -45,7 +45,7 @@ def prob2phred(x):
 ###diploid caller assuming all alternative alleles are possible (error is divided by three for now, could add a more complex model)
 def geno_caller_10GT(X):
   
-		GL=np.zeros(10)   #all 10 possible genotypes and order = AA,AC,AG,AT,CC,CG,CT,GG,GT,TT
+    GL=np.zeros(10)   #all 10 possible genotypes and order = AA,AC,AG,AT,CC,CG,CT,GG,GT,TT
     hap=np.zeros((len(X),4))  #all 4 haploid possibilities, A,C,G,T
 
     all_dic={}
