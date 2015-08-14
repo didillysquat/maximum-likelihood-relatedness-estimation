@@ -45,11 +45,21 @@ void relatedness::populate_data(){
 	std::ifstream vcfFile (infile);
   	std::vector<std::string> data;
   	std::string line;
+	std::string commentPrefix = "##";
   	while (std::getline(vcfFile, line)){
-  		if(!line.empty())
+  		if(!line.empty()) {
+		    // Ignore comment lines (i.e. lines starting with "##")
+		    if (!std::equal(commentPrefix.begin(), commentPrefix.end(), line.begin())) {
  	 		data.push_back(line);
+		    }
+		}
 	}
   	vcfFile.close();
+
+	if (data[0].front() != '#') {
+	    std::cerr << "I could not find a header line in VCF file. Please make sure it is properly formatted.\n";
+	    std::exit(1);
+	}
 
   	std::vector<std::string> head = split(data[0],'\t');
   	header = {head.begin()+9, head.end()};
@@ -70,18 +80,19 @@ void relatedness::populate_data(){
 		      unrelated_individual_index.end(), 0);
 	}
 
-
+	
 	std::string sampleLine;
-	for(auto iter=data.begin()+1; iter!=data.end(); iter++){
+	for(auto iter = data.begin() + 1; iter != data.end(); iter++){
 		if (!(iter->find('#') == 0)) { // If this isn't a comment line
 			// Copy over a sample line to analyze for GQ, GL and GT fields
 			if (sampleLine.empty()) {
 				sampleLine = *iter;
 			}
 			std::vector<std::string> elements = split(*iter,'\t');
-			std::copy(elements.begin()+9, elements.end(),elements.begin());
-			if(elements.size()>1){
-				snp_data.push_back(elements);
+			std::vector<std::string> elementsOut;
+			std::copy(elements.begin()+9, elements.end(), elementsOut.begin());
+			if(elementsOut.size()>1){
+				snp_data.push_back(elementsOut);
 			}
 		}
 	}
