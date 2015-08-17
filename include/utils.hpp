@@ -12,6 +12,9 @@ enum class InferenceType : uint8_t {
     BEST_GENOTYPE, ALL_GENOTYPES
 };
 
+enum class LikelihoodFormat : uint8_t {
+    RAW, LOG, PHRED
+};
 
 struct StringItPair {
         StringItPair(std::string::iterator b, std::string::iterator e) :

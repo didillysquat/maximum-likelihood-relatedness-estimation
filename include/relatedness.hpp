@@ -8,14 +8,20 @@
 #include <Eigen/Dense>
 
 #include "utils.hpp"
+#include <memory>
 
 #define IBD_COUNT 3
 #define GENOTYPE_COUNT 9
 
+// forward declaration
+namespace vcflib {
+    class VariantCallFile;
+}
+
 class relatedness {
 
 private:
-
+    std::unique_ptr<vcflib::VariantCallFile> vcfFile{nullptr};
 	std::string infile;
 
 	std::string outfile;
@@ -23,12 +29,14 @@ private:
 	std::vector<std::string> header;
 
 	std::vector<std::vector<std::string>> snp_data;
+    std::vector<std::vector<std::vector<double>>> gtProbs;
 
 	int snp_count;
 
 	bool haveUnrelatedList_{false};
 
     InferenceType inferenceType;
+    LikelihoodFormat likelihoodFormat;
 
     uint32_t num_worker_threads{1};
 
@@ -117,11 +125,17 @@ public:
 
     InferenceType getInferenceType() { return inferenceType; }
 
+    void set_likelihood_format(LikelihoodFormat likeFmt) {
+        likelihoodFormat = likeFmt;
+    }
+
+    LikelihoodFormat getLikelihoodFormat() { return likelihoodFormat; }
+
 	int getSNPCount() { return snp_count; }
 
     uint32_t getNumWorkers() { return num_worker_threads; }
 
-    std::vector<std::string>& getHeader() { return header; }
+    std::vector<std::string>& getHeader();
 };
 
 #endif
