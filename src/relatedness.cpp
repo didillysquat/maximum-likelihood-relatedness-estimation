@@ -95,8 +95,8 @@ void relatedness::populate_data_new() {
         ++snp_count;
 
         // If there is no GL field -- note this and continue
-        if (find(var.format.begin(), var.format.end(), "GL") == var.format.end()) {
-            logger->warn("No GL field in variant: {}", var.sequenceName);
+        if (find(var.format.begin(), var.format.end(), genotypeFieldName) == var.format.end()) {
+            logger->warn("No {} field in variant: {}", genotypeFieldName, var.sequenceName);
             continue;
         }
         // If we didn't find the "GT" field (what does this mean?)
