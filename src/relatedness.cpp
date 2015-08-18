@@ -19,6 +19,8 @@
 #include "relatedness.hpp"
 #include "utils.hpp"
 
+#include "cppitertools/itertools.hpp"
+
 void relatedness::populate_data_new() {
 	auto logger = spdlog::get("jointLog");
 
@@ -35,15 +37,15 @@ void relatedness::populate_data_new() {
 
 	// Create the unrelated individual list
 	if (haveUnrelatedList_) { // If we have a specific list of unrelated individuals, then use it
-		std::cerr << "have unrelated list\n";
-		std::cerr << "index list = { ";
+		logger->info("have unrelated list");
+		//std::cerr << "index list = { ";
 		for(int i=0; i<header.size();i++){
 			if(std::find(unrelated_individuals.begin(), unrelated_individuals.end(), header[i]) != unrelated_individuals.end()) {
 				unrelated_individual_index.push_back(i);
-				std::cerr << i << " ";
+				//std::cerr << i << " ";
 			}
 		}
-		std::cerr << "}\n";
+		//std::cerr << "}\n";
 	} else { // Otherwise, assume everyone is unrelated
 	    unrelated_individual_index.resize(header.size());
 	    std::iota(unrelated_individual_index.begin(),
@@ -54,6 +56,33 @@ void relatedness::populate_data_new() {
     std::vector<std::vector<std::vector<double>>> genotypeLikelihoods;
     std::vector<double> alleleFreqs;
 
+    switch (likelihoodFormat) {
+        case LikelihoodFormat::RAW:
+            logger->info("Genotype likelihood format is RAW");
+            break;
+        case LikelihoodFormat::LOG:
+            logger->info("Genotype likelihood format is LOG");
+            break;
+        case LikelihoodFormat::PHRED:
+            logger->info("Genotype likelihood format is PHRED");
+            break;
+    }
+
+    /**
+     *  For *some* reason (WHY?) vcflib doesn't return the samples for a variant in the
+     *  order in which the appear in the line (left-to-right).  Thus, we need to map from
+     *  a sample's name to it's index so as to maintain a globally-consistent order.
+     **/
+    std::unordered_map<std::string, uint32_t> sampleNameToIndex;
+    uint32_t idx{0};
+    for (auto n : vcfFile->sampleNames) {
+        sampleNameToIndex[n] = idx;
+        ++idx;
+    }
+    // The number of samples we expect for each variant
+    size_t numSamples = vcfFile->sampleNames.size();
+
+    auto genotypeFieldName = (likelihoodFormat == LikelihoodFormat::PHRED) ? "PL" : "GL";
     bool excludeBroken{true};
     // Code modified from
     // https://github.com/ekg/vcflib/blob/b1e9b31d2d95f957f86cdfd1e7c9ec25b4950ee8/src/vcfglbound.cpp
@@ -61,125 +90,140 @@ void relatedness::populate_data_new() {
     using std::find;
     using std::reverse;
 	vcflib::Variant var(*vcfFile);
+    // For each variant
 	while (vcfFile->getNextVariant(var)) {
         ++snp_count;
+
         // If there is no GL field -- note this and continue
         if (find(var.format.begin(), var.format.end(), "GL") == var.format.end()) {
-            logger->warn("No GL field in variant: {}", snp_count - 1);
+            logger->warn("No GL field in variant: {}", var.sequenceName);
             continue;
         }
         // If we didn't find the "GT" field (what does this mean?)
         if (find(var.format.begin(), var.format.end(), "GT") == var.format.end()) {
-            var.format.push_back("GT");
-            reverse(var.format.begin(), var.format.end());
+            logger->warn("No GT field in variant: {}", var.sequenceName);
+            continue;
+            //var.format.push_back("GT");
+            //reverse(var.format.begin(), var.format.end());
         }
 
+        // Reset for each variant
         bool isbroken = false;
         uint32_t numZeros{0};
         uint32_t totGT{0};
 
-        genotypeLikelihoods.push_back(std::vector<std::vector<double>>());
+        // New variant entry
+        std::vector<std::vector<double>> variantLikelihoods(numSamples, std::vector<double>());
+
+        // For each sample in this variant
         for (auto s = var.samples.begin(); s != var.samples.end(); ++s) {
+
             auto& sample = s->second;
-
-                auto l = (likelihoodFormat == LikelihoodFormat::PHRED) ?
-                         sample.find("PL") : sample.find("GL");
-                if (l != sample.end()) {
-                    // find the gl max
-                    vector<string>& glstrs = l->second;
-                    vector<double> gls;
-                    for (auto gl = glstrs.begin(); gl != glstrs.end(); ++gl) {
-                        const auto& glstr = *gl;
-                        double val = -std::numeric_limits<double>::infinity();
-                        if (glstr != ".") {
-                            const char* glcstr = glstr.c_str();
-                            char* end;
-                            val = std::strtod(glcstr, &end);
-                        }
-                        gls.push_back(val);
-                    }
-
-                    // Do checking of likelihoods and any conversion here
-                    // Here, we convert logspace -> rawspace --- the other way around
-                    // might be better
-                    switch (likelihoodFormat) {
-                        case LikelihoodFormat::LOG :
-                            for (auto& g : gls) {
-                                if (std::isfinite(g)) {
-                                    g = std::pow(10.0, g);
-                                }
-                            }
-                            break;
-                        case LikelihoodFormat::PHRED :
-                            for (auto& g : gls) {
-                                if (std::isfinite(g)) {
-                                    g = std::pow(10.0, -g / 10.0);
-                                }
-                            }
-                            break;
-                        case LikelihoodFormat::RAW :
-                            // Convert invalid values to our sentinel
-                            // (-inf)
-                            for (auto& g : gls) {
-                                if (std::isfinite(g)) {
-                                    // Raw values should not be negative
-                                    // (check for > 1)?
-                                    if (g < 0.0) {
-                                        g = -std::numeric_limits<double>::infinity();
-                                    }
-                                }
-                            }
-                            break;
-                    }
-
-                    genotypeLikelihoods.back().push_back(gls);
-                    /*
-                       isbroken = false; // reset every iteration
-                       for (auto g = gls.begin(); g != gls.end(); ++g) {
-                       if (*g > 0) {
-                       isbroken = true;
-                       break;
-                       }
-                       }
-                       if (isbroken) {
-                       if (excludeBroken) {
-                       cerr << var.sequenceName << ":" << var.position << ", sample " << s->first << " has GL > 0" << endl;
-                       break;
-                       } else {
-                       cerr << "VCF record @ " << var.sequenceName << ":" << var.position << ", sample " << s->first << " has GL > 0, not processing, but outputting" << endl;
-                       continue;
-                       }
-                       }
-                       */
-                } else {
-                    auto fieldName = (likelihoodFormat == LikelihoodFormat::PHRED) ? "PL" : "GL";
-                    logger->error("Couldn't find the required field {} in record {}",
-                                  fieldName, snp_count - 1);
-                    std::exit(1);
-                }
 
             // Get the genotype
             auto t = sample.find("GT");
-            if (t != sample.end()) {
-                auto& gtstrs = t->second;
-                for(auto gtit = gtstrs.begin(); gtit != gtstrs.end(); ++gtit) {
-                    // If GT is available
-                    if (*gtit != "./." and *gtit != ".|.") {
-                        auto gtVec = split(*gtit, "/|");
-                        // Check that there are only 2 alleles?
-                        int ga = std::stoi(gtVec[0]);
-                        int gb = std::stoi(gtVec[1]);
-                        numZeros += (ga == 0) ? 1 : 0;
-                        numZeros += (gb == 0) ? 1 : 0;
-                        totGT += 2;
-                    }
-                }
+            if (t == sample.end()) {
+                logger->error("Couldn't find the required field GT in record {}", s->first);
+                std::exit(1);
             }
 
+            auto l = sample.find(genotypeFieldName);
+
+            if (l == sample.end()) {
+                logger->error("Couldn't find the required field {} in record {}",
+                              genotypeFieldName, s->first);
+                std::exit(1);
+            }
+
+            // At this point, we have both the GT and GL / PL fields.
+            // Check that we have the same number of each
+
+            // The "vector" of genotypes for this sample
+            std::vector<std::string>& gtstrs = t->second;
+            // The vector of genotype likelihoods for this sample
+            std::vector<std::string>& glstrs = l->second;
+            // The index of this sample in header order
+            auto sampleIndex = sampleNameToIndex[s->first];
+
+            auto& gtstr = gtstrs.front(); // Assume only one GT field per sample per variant.
+            std::vector<double> gls;
+            bool parseLikelihoods{true};
+            // If GT is available, parse it.
+            // If one or both of the genotypes are null ".", then
+            // fill in the likelihoods as invalid and move on to the
+            // next sample for this variant.
+            if (gtstr != "./." and gtstr != ".|.") {
+                auto gtVec = split(gtstr, "/|");
+                // Check that there are only 2 alleles?
+                if (gtVec[0] == "." or gtVec[1] == ".") {
+                    gls = {-std::numeric_limits<double>::infinity(),
+                           -std::numeric_limits<double>::infinity(),
+                           -std::numeric_limits<double>::infinity()};
+                    parseLikelihoods = false;
+                }
+                int ga = std::stoi(gtVec[0]);
+                int gb = std::stoi(gtVec[1]);
+                numZeros += (ga == 0) ? 1 : 0;
+                numZeros += (gb == 0) ? 1 : 0;
+                totGT += 2;
+            } else {
+                gls = {-std::numeric_limits<double>::infinity(),
+                       -std::numeric_limits<double>::infinity(),
+                       -std::numeric_limits<double>::infinity()};
+                parseLikelihoods = false;
+            }
+
+            if (parseLikelihoods) {
+                for (auto gl = glstrs.begin(); gl != glstrs.end(); ++gl) {
+                    const auto& glstr = *gl;
+                    double val = -std::numeric_limits<double>::infinity();
+                    if (glstr != ".") {
+                        const char* glcstr = glstr.c_str();
+                        char* end;
+                        val = std::strtod(glcstr, &end);
+                    }
+                    gls.push_back(val);
+                }
+
+                // Do checking of likelihoods and any conversion here
+                // Here, we convert logspace -> rawspace --- the other way around
+                // might be better
+                switch (likelihoodFormat) {
+                    case LikelihoodFormat::LOG :
+                        for (auto& g : gls) {
+                            if (std::isfinite(g)) {
+                                g = std::pow(10.0, g);
+                            }
+                        }
+                        break;
+                    case LikelihoodFormat::PHRED :
+                        for (auto& g : gls) {
+                            if (std::isfinite(g)) {
+                                g = std::pow(10.0, -g / 10.0);
+                            }
+                        }
+                        break;
+                    case LikelihoodFormat::RAW :
+                        // Convert invalid values to our sentinel
+                        // (-inf)
+                        for (auto& g : gls) {
+                            if (std::isfinite(g)) {
+                                // Raw values should not be negative
+                                // (check for > 1)?
+                                if (g < 0.0) {
+                                    g = -std::numeric_limits<double>::infinity();
+                                }
+                            }
+                        }
+                        break;
+                }
+            }
+            variantLikelihoods[sampleIndex] = gls;
         }
+        genotypeLikelihoods.push_back(std::move(variantLikelihoods));
 
         if (totGT == 0) {
-            logger->error("No samples for variant {}!", snp_count);
+            logger->error("No samples for variant {}!", var.sequenceName);
             std::exit(1);
         }
 
@@ -190,19 +234,23 @@ void relatedness::populate_data_new() {
         if (excludeBroken && isbroken) {
             logger->warn("excluding VCF record @ {} : {} due to GLs > 0", var.sequenceName, var.position);
         }
-        //else {
-        //    cout << var << endl;
-        //}
     }
-
     logger->info("Parsed variants at {} total sites", snp_count);
+    logger->info("allele freqs = {}", alleleFreqs.size());
+    logger->info("gt likelihoods = {}", genotypeLikelihoods.size());
 
     std::swap(gtProbs, genotypeLikelihoods);
     // Probably a better way to do this, but deal with that later
+    size_t zeroCount{0};
+    size_t oneCount{0};
     allele_frequency.resize(alleleFreqs.size());
     for (size_t i = 0; i < alleleFreqs.size(); ++i) {
         allele_frequency(i) = alleleFreqs[i];
+        if (allele_frequency(i) == 0.0) { zeroCount++; }
+        if (allele_frequency(i) == 1.0) { oneCount++; }
     }
+    std::cerr << "number of SNPs masked (freq 0) = " << zeroCount << "\n";
+    std::cerr << "number of SNPs masked (freq 1) = " << oneCount << "\n";
 }
 
 
@@ -354,9 +402,9 @@ void relatedness::calculate_pairwise_likelihood(
     auto id1 = pair.first;
     auto id2 = pair.second;
     // For every variant (SNP)
-	for(int j=0; j<snp_count; j++){
+	for(auto j : iter::range(snp_count)) {
 
-		double p=allele_frequency(j);
+        double p=allele_frequency(j);
 		// double q=1.0-p;
 
 		//Mask SNPs where allele frequency is fixed
@@ -473,7 +521,10 @@ void pairwiseLikelihoodWorker(
 
     fmt::MemoryWriter resWriter;
     std::pair<int, int> indPair;
-    while (!queueFilled or workQueue.try_dequeue(indPair)) {
+    bool gotNewPair{false};
+    while (!queueFilled or (gotNewPair = workQueue.try_dequeue(indPair))) {
+        if (!gotNewPair) { continue; }
+        gotNewPair = false;
         mask_snp.setZero();
         ibs_pairwise.setZero();
         ibs_best.setZero();
@@ -508,6 +559,10 @@ void pairwiseLikelihoodWorker(
 
         auto& ind1 = relateObj.getHeader()[indPair.first];
         auto& ind2 = relateObj.getHeader()[indPair.second];
+        if (indPair.first == indPair.second) {
+            std::cerr << "i1 = "<< indPair.first << ", i2 = " << indPair.second << '\n';
+            std::exit(1);
+        }
         resWriter.write("{}\t{}\t{:.3f}\t{:.3f}\t{:.3f}\t{:.3f}\t{}\n",
                         ind1, ind2,
                         k_est(0), k_est(1), k_est(2),
