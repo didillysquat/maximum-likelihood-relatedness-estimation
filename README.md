@@ -25,3 +25,6 @@ Producing VCF input from BAM files
 
 A preliminary implementation of a script to generate lcMLkin-ready VCF files from a set of indexed BAM files is available under the `src_python/SNPbam2vcf` directory of the repository ([here](https://github.com/COMBINE-lab/maximum-likelihood-relatedness-estimation/tree/master/src_python/SNPbam2vcf)).  There, you will find more information on the script including usage examples.
 
+Best Practices
+-----------------------------------
+Detailed information on how to prepare input files with likelihoods and how to choose SNPs for analysis can be found in our [wiki] (https://github.com/COMBINE-lab/maximum-likelihood-relatedness-estimation/wiki).
