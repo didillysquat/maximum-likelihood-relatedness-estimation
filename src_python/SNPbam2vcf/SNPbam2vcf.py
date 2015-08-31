@@ -95,7 +95,7 @@ def geno_caller_3GT(X,ref,alt,all_dic):
         if all_dic.has_key(X[g][0])==False:
             continue
         err=phred2prob(X[g][1])*(1.0/3.0)
-        tru=1-phred2prob(X[g][1])*(1.0/3.0)
+        tru=1-phred2prob(X[g][1])
         
         if X[g][0]==ref:
             GL[0]=GL[0]+math.log10(tru)
