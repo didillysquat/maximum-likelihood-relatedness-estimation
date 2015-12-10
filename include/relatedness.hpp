@@ -79,13 +79,15 @@ public:
             std::vector<double>&
             );
 
-	void calculate_pairwise_ibd(bool testing);
+	void calculate_pairwise_ibd(bool testing, uint32_t numBootstraps);
 
 	Eigen::Vector3d optimize_parameters(
             Eigen::Array<Eigen::MatrixXd, GENOTYPE_COUNT, 1>& ibs_all,
             Eigen::VectorXd& mask_snp,
             Eigen::MatrixXd& pibs,
-            Eigen::Array<Eigen::MatrixXd, GENOTYPE_COUNT, 1>& workingSpace);
+            Eigen::Array<Eigen::MatrixXd, GENOTYPE_COUNT, 1>& workingSpace,
+	    std::vector<std::vector<uint32_t>>& bootstrap_inds,
+	    std::vector<Eigen::Vector3d>& bootstrap_samples);
 
     Eigen::Vector3d optimize_parameters(
             Eigen::MatrixXd& ibs_best,
@@ -102,8 +104,9 @@ public:
             Eigen::Array<Eigen::MatrixXd, GENOTYPE_COUNT, 1>& ibs_all,
             Eigen::VectorXd& mask_snp,
             Eigen::MatrixXd& pibs,
-            Eigen::Array<Eigen::MatrixXd, GENOTYPE_COUNT, 1>& workingSpace);
-
+            Eigen::Array<Eigen::MatrixXd, GENOTYPE_COUNT, 1>& workingSpace,
+	    std::vector<uint32_t>* bootstrap_inds = nullptr // If we're doing a bootstrap, use these SNPs
+	    );
 
 
 	Eigen::Vector3d em_optimization(
