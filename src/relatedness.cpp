@@ -585,14 +585,14 @@ void pairwiseLikelihoodWorker(
 
 	  resWriter.write("{}\t{}", ind1, ind2);
 	  for (auto& bsamp : bootstrap_samples) {
-	    resWriter.write("\t{:.3f}\t{:.3f}\t{:.3f}\t{:.3f}", 
+	    resWriter.write("\t{:.3f}\t{:.3f}\t{:.3f}\t{:.3f}",
 		bsamp(0),
 		bsamp(1),
 		bsamp(2),
 		0.5 * bsamp(1) + bsamp(2));
 	  }
-	  resWriter.write("\n"); 
-	  resultQueue.enqueue(std::forward_as_tuple(OutputType::BOOTSTRAP_FILE, resWriter.str()));	
+	  resWriter.write("\n");
+	  resultQueue.enqueue(std::forward_as_tuple(OutputType::BOOTSTRAP_FILE, resWriter.str()));
 	  resWriter.clear();
 	}
         /*
@@ -642,7 +642,7 @@ void relatedness::calculate_pairwise_ibd(bool testing, uint32_t numBootstraps){
     std::vector<Eigen::MatrixXd> ibs_best_mats(numThreads,
                                   Eigen::MatrixXd::Zero(snp_count, IBD_COUNT));
 
-    // If we're going to do bootstrapping, the find the indices we'll use for each 
+    // If we're going to do bootstrapping, the find the indices we'll use for each
     // bootstrap sample here.
     std::vector<std::vector<uint32_t>> bootstrap_inds(numBootstraps,
 				  std::vector<uint32_t>(snp_count));
@@ -650,7 +650,7 @@ void relatedness::calculate_pairwise_ibd(bool testing, uint32_t numBootstraps){
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<> dis(0, snp_count-1);
-    
+
     // For each requested bootstrap sample, grab an index between 0 and  snp_count (with replacement)
     for (size_t sampNum = 0; sampNum < numBootstraps; ++sampNum) {
       for (size_t i = 0; i < snp_count; ++i) {
@@ -704,7 +704,7 @@ void relatedness::calculate_pairwise_ibd(bool testing, uint32_t numBootstraps){
             if (numRes % 100 == 0) {
                 std::cerr << "\r\rComputed results for " << numRes << " pairs";
             }
-	    if (std::get<0>(resLine) == OutputType::MAIN_FILE) { 
+	    if (std::get<0>(resLine) == OutputType::MAIN_FILE) {
               estFile << std::get<1>(resLine);
 	    } else if (std::get<0>(resLine) == OutputType::BOOTSTRAP_FILE) {
 	      (*bsfile) << std::get<1>(resLine);
@@ -735,8 +735,12 @@ Eigen::Vector3d relatedness::optimize_parameters(
 
 	auto mlEstimate = em_optimization(k_values, ibs_all, mask_snp, pibs, Xall);
 	auto numBootstraps = bootstrap_inds.size();
-	for (size_t i = 0; i < numBootstraps; ++i) {
-	  bootstrap_samples[i] = em_optimization(k_values, ibs_all, mask_snp, pibs, Xall, &bootstrap_inds[i]);
+    for (size_t i = 0; i < numBootstraps; ++i) {
+      k_values = Eigen::Vector3d::Random();
+      k_values = k_values.cwiseAbs();
+      k_values /= k_values.sum();
+      bootstrap_samples[i] = em_optimization(k_values, ibs_all, mask_snp,
+                                             pibs, Xall, &bootstrap_inds[i]);
 	}
 	return mlEstimate;
 }
@@ -901,18 +905,31 @@ Eigen::Vector3d relatedness::em_optimization(
   //Probabilities of IBD for each SNP
   Eigen::MatrixXd ibd_probability = Eigen::MatrixXd::Zero(snp_count,IBD_COUNT);
 
-
   Eigen::Array<Eigen::MatrixXd, GENOTYPE_COUNT, 1> XPre;
   XPre = ibs_all;
+
   for(size_t gtIdx = 0; gtIdx < GENOTYPE_COUNT; ++gtIdx) {
     XPre(gtIdx).col(0).array() *= pibs.col(gtIdx).array();
     XPre(gtIdx).col(1).array() *= pibs.col(gtIdx).array();
     XPre(gtIdx).col(2).array() *= pibs.col(gtIdx).array();
   }
 
-
+  Eigen::Array<Eigen::MatrixXd, GENOTYPE_COUNT, 1> XBoot;
   bool isBootstrap = (bootstrap_inds != nullptr);
-  
+  if (isBootstrap) {
+    XBoot = XPre;
+    for(size_t i = 0; i < snp_count; ++i) {
+        auto bi = (*bootstrap_inds)[i];
+        for(size_t gtIdx = 0; gtIdx < GENOTYPE_COUNT; ++gtIdx) {
+          XBoot(gtIdx)(i,0) = XPre(gtIdx)(bi, 0);
+          XBoot(gtIdx)(i,1) = XPre(gtIdx)(bi, 1);
+          XBoot(gtIdx)(i,2) = XPre(gtIdx)(bi, 2);
+        }
+    }
+    XPre = XBoot;
+  }
+
+
   //Difference bwtween subsequent parameter estimates
   double thresh = 100;
   //Iteration number
@@ -924,7 +941,7 @@ Eigen::Vector3d relatedness::em_optimization(
 
     for(int j=0; j< IBD_COUNT; j++){
       for(size_t gtIdx = 0; gtIdx < GENOTYPE_COUNT; ++gtIdx) {
-	Xall(gtIdx).col(j).noalias() = XPre(gtIdx).col(j)*k_values(j);
+        Xall(gtIdx).col(j).noalias() = XPre(gtIdx).col(j)*k_values(j);
       }
     }
     /*
@@ -947,29 +964,36 @@ Eigen::Vector3d relatedness::em_optimization(
     }
 
     XS = X.rowwise().sum();
-    for(int i=0;i <snp_count; i++){ //Mask
-      // bootstrapping
-      auto sn = (isBootstrap) ? (*bootstrap_inds)[i] : i;
-      if (i != sn) { XS(i) = XS(sn); }
-
-      if(mask_snp(sn)==1){
-	XS(i)=0;
+    if (isBootstrap) {
+      for(int i=0;i <snp_count; i++){ //Mask
+        // bootstrapping
+        auto sn = (*bootstrap_inds)[i];
+        if(mask_snp(sn)==1){
+          XS(i)=0;
+        }
+      }
+    } else {
+      for(int i=0;i <snp_count; i++){ //Mask
+        // bootstrapping
+        if(mask_snp(i)==1){
+          XS(i)=0;
+        }
       }
     }
 
     //Normalize X
     for(int i=0; i<snp_count; i++){
       if(XS(i)==0){
-	for(int j=0; j<IBD_COUNT; j++){
-	  if(X(i,j)!=0){
-	    X(i,j)=1;
-	  }
-	}
+        for(int j=0; j<IBD_COUNT; j++){
+          if(X(i,j)!=0){
+            X(i,j)=1;
+          }
+        }
       }
       else{
-	for(int j=0; j<IBD_COUNT; j++){
-	  X(i,j)/=XS(i);
-	}
+        for(int j=0; j<IBD_COUNT; j++){
+          X(i,j)/=XS(i);
+        }
       }
     }
 
@@ -982,9 +1006,10 @@ Eigen::Vector3d relatedness::em_optimization(
     //Sum of probabilities at each site
     for(int i=0; i<IBD_COUNT; i++){
       for(int j=0; j<snp_count; j++){
-	if(mask_snp(j)!=1){ //Mask
-	  k_est(i) += X(j,i);
-	}
+        auto sn = isBootstrap ? (*bootstrap_inds)[j] : j;
+        if(mask_snp(sn)!=1){ //Mask
+          k_est(i) += X(j,i);
+        }
       }
     }
 
