@@ -1,27 +1,31 @@
 #ifndef RELATEDNESS_H
 #define RELATEDNESS_H
 
-#include <limits>
-#include <string>
-#include <vector>
+#include "utils.hpp"
+#include "Variant.h"
 
 #include <Eigen/Dense>
 
-#include "utils.hpp"
+#include <limits>
+#include <string>
+#include <vector>
 #include <memory>
 
 #define IBD_COUNT 3
 #define GENOTYPE_COUNT 9
 
 // forward declaration
-namespace vcflib {
-    class VariantCallFile;
-}
+//namespace vcflib {
+//    class VariantCallFile;
+//}
+
+class AlleleFrequencyMap; // fwd decl
 
 class relatedness {
 
 private:
-    std::unique_ptr<vcflib::VariantCallFile> vcfFile{nullptr};
+    using VCFPtr = std::unique_ptr<vcflib::VariantCallFile>;
+    VCFPtr vcfFile = VCFPtr(nullptr); 
 	std::string infile;
 
 	std::string outfile;
@@ -63,7 +67,7 @@ public:
 
 	void parse_unrelated_individuals(const std::string& file);
 
-	void populate_data_new();
+	void populate_data_new(AlleleFrequencyMap*);
 
 	void populate_data();
 

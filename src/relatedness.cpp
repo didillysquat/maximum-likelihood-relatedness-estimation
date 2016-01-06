@@ -13,17 +13,18 @@
 #include <random>
 
 #include "Variant.h"
-// #include <omp.h>
 #include "tclap/CmdLine.h"
 #include "spdlog/spdlog.h"
 #include "concurrentqueue.h"
 #include "relatedness.hpp"
+#include "allele_frequency_map.hpp"
 #include "utils.hpp"
 
 #include "cppitertools/itertools.hpp"
 
-void relatedness::populate_data_new() {
+void relatedness::populate_data_new(AlleleFrequencyMap* afMap) {
 	auto logger = spdlog::get("jointLog");
+	bool computeAlleleFreq = (afMap == nullptr);
 
     if (!vcfFile) {
         vcfFile.reset(new vcflib::VariantCallFile);
@@ -93,7 +94,11 @@ void relatedness::populate_data_new() {
 	vcflib::Variant var(*vcfFile);
     // For each variant
 	while (vcfFile->getNextVariant(var)) {
-        ++snp_count;
+	  // Chromosome / contig
+	  auto chr = var.ref;
+	  // variant position
+	  auto pos = var.position;	
+	  ++snp_count;
 
         // If there is no GL field -- note this and continue
         if (find(var.format.begin(), var.format.end(), genotypeFieldName) == var.format.end()) {
@@ -228,9 +233,22 @@ void relatedness::populate_data_new() {
             std::exit(1);
         }
 
-        // Push back the dominant allele frequency
-        double af = static_cast<float>(numZeros) / totGT;
-        alleleFreqs.push_back(af);
+	// Push back the dominant allele frequency
+	double af = 0.0;
+	if (computeAlleleFreq) {
+	  af = static_cast<float>(numZeros) / totGT;
+	} else {
+	  AlleleFrequencyValue afv;
+	  bool foundAllele = afMap->get(chr, pos, afv);
+	  if (!foundAllele) { 
+	    logger->warn("Could not find pre-computed frequency for ({}, {})! Using computed value",
+			 chr, pos);
+
+	    af = static_cast<float>(numZeros) / totGT;
+	  }
+	  af = (1.0 - afv.altFreq);
+	}
+	alleleFreqs.push_back(af);
 
         if (excludeBroken && isbroken) {
             logger->warn("excluding VCF record @ {} : {} due to GLs > 0", var.sequenceName, var.position);
@@ -1131,125 +1149,4 @@ void usage(char *program) {
 }
 */
 
-int main(int argc, char* argv[]){
 
-    std::string versionStr = "v0.5.0";
-    TCLAP::CmdLine cmd(
-            "lcMLkin",
-            ' ',
-            versionStr);
-
-    auto defaultNumThreads = std::thread::hardware_concurrency();
-    TCLAP::ValueArg<std::string> input("i", "input", "The input VCF file",
-                                       true, "", "path");
-    TCLAP::ValueArg<std::string> output("o", "output", "Where output should be written",
-                                       true, "", "path");
-    TCLAP::ValueArg<uint32_t> numThreads("t", "threads", "Number of threads to use",
-                                       false, defaultNumThreads, "integer >= 1");
-    TCLAP::ValueArg<std::string> likelihoodFormat("l", "likelihoodFormat",
-                                       "Type of genotype likelihood that should be used (raw | log | phred)",
-                                       false, "raw", "string");
-    TCLAP::ValueArg<std::string> type("g", "genotype",
-                                      "Which inference algorithm to use; (all | best)",
-                                      true, "all", "string");
-    TCLAP::ValueArg<uint32_t> numBootstraps("b", "numBootstraps", "Number of bootstraps to perform",
-                                       false, 0, "integer >= 1");
-    TCLAP::SwitchArg testingFlag("s", "testing", "Only compute results for the first 16 individuals");
-    TCLAP::ValueArg<std::string> unrelatedFile("u", "unrelated", "File containing list of unrelated individuals",
-		    			       false, "", "path");
-    cmd.add(input);
-    cmd.add(output);
-    cmd.add(numThreads);
-    cmd.add(numBootstraps);
-    cmd.add(likelihoodFormat);
-    cmd.add(type);
-    cmd.add(testingFlag);
-    cmd.add(unrelatedFile);
-    try {
-        cmd.parse(argc, argv);
-        auto numWorkerThreads = numThreads.getValue();
-        auto numBootstrapSamples = numBootstraps.getValue();
-        std::cerr << "lcMLkin " << versionStr << '\n';
-        std::cerr << "==============================" << '\n';
-        std::cerr << "using " << numWorkerThreads << " threads\n";
-
-
-
-        struct timeval start, end;
-        struct timezone tzp;
-        gettimeofday(&start, &tzp);
-
-        relatedness r;
-
-        auto inputFileName = input.getValue();
-        auto outputFileName = output.getValue();
-        r.set_infile(inputFileName.c_str());
-        r.set_outfile(outputFileName.c_str());
-        r.set_num_workers(numWorkerThreads);
-
-
-        std::ofstream logStream(outputFileName + ".log");
-
-        std::vector<spdlog::sink_ptr> sinks;
-        sinks.push_back(std::make_shared<spdlog::sinks::stderr_sink_mt>());
-        sinks.push_back(std::make_shared<spdlog::sinks::ostream_sink_mt>(logStream));
-        auto combinedLogger = std::make_shared<spdlog::logger>("jointLog", std::begin(sinks), std::end(sinks));
-        spdlog::register_logger(combinedLogger);
-
-	combinedLogger->info("Will generate {} bootstrap samples", numBootstrapSamples);
-
-        if (unrelatedFile.isSet()) {
-            std::string& unrelatedFileName = unrelatedFile.getValue();
-            r.parse_unrelated_individuals(unrelatedFileName);
-        }
-
-        auto inferenceType = type.getValue();
-        if (inferenceType == "all") {
-            r.set_inference_type(InferenceType::ALL_GENOTYPES);
-        } else if (inferenceType == "best") {
-            r.set_inference_type(InferenceType::BEST_GENOTYPE);
-        } else {
-            std::cerr << "Error: don't understand inference type "
-                << inferenceType << ", must be \"all\" or \"best\"\n";
-            std::exit(1);
-        }
-
-        auto likelihoodFmt = likelihoodFormat.getValue();
-        if (likelihoodFmt == "raw") {
-            r.set_likelihood_format(LikelihoodFormat::RAW);
-        } else if (likelihoodFmt == "log") {
-            r.set_likelihood_format(LikelihoodFormat::LOG);
-        } else if (likelihoodFmt == "phred") {
-            r.set_likelihood_format(LikelihoodFormat::PHRED);
-        } else {
-            combinedLogger->error("{} is not a valid likelihood format!", likelihoodFmt);
-            std::exit(1);
-        }
-
-        std::cout<<"Populating Data"<<std::endl;
-        //r.populate_data(); //works correctly
-        r.populate_data_new();
-
-        ///std::cout<<"Calculating Allelle Frequencies"<<std::endl;
-        //r.calculate_allele_frequencies(); //works correctly
-
-        std::cout<<"Calculating Prestored IBS|IBD"<<std::endl;
-        r.calculate_ibs(); //works correctly
-
-        std::cout<<"Starting Pairwise IBD Computations"<<std::endl;
-        bool testing = testingFlag.getValue();
-        r.calculate_pairwise_ibd(testing, numBootstrapSamples);
-
-        gettimeofday(&end, &tzp);
-        print_time_elapsed("", &start, &end);
-
-        combinedLogger->flush();
-        logStream.close();
-
-    } catch (TCLAP::ArgException& e) {
-        std::cerr << "Exception [" << e.error() << "] when parsing argument "
-            << e.argId() << '\n';
-        return 1;
-    }
-    return 0;
-}
