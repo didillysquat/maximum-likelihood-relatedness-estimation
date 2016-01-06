@@ -2,8 +2,8 @@
 // Copyright(c) 2015 Gabi Melman.
 // Distributed under the MIT License (http://opensource.org/licenses/MIT)
 //
-
 #pragma once
+
 #include<string>
 #include<cstdio>
 #include<ctime>
@@ -20,6 +20,7 @@
 
 #elif __linux__
 #include <sys/syscall.h> //Use gettid() syscall under linux to get thread id
+#include <sys/stat.h>
 #include <unistd.h>
 #else
 #include <thread>
@@ -43,6 +44,7 @@ inline spdlog::log_clock::time_point now()
     return std::chrono::time_point<log_clock, typename log_clock::duration>(
                std::chrono::duration_cast<typename log_clock::duration>(
                    std::chrono::seconds(ts.tv_sec) + std::chrono::nanoseconds(ts.tv_nsec)));
+
 
 #else
     return log_clock::now();
@@ -138,15 +140,36 @@ inline int fopen_s(FILE** fp, const std::string& filename, const char* mode)
     return *fp == nullptr;
 #endif
 
+}
+
+
+//Return if file exists
+inline bool file_exists(const std::string& filename)
+{
+#ifdef _WIN32
+    auto attribs = GetFileAttributesA(filename.c_str());
+    return (attribs != INVALID_FILE_ATTRIBUTES && !(attribs & FILE_ATTRIBUTE_DIRECTORY));
+#elif __linux__
+    struct stat buffer;
+    return (stat (filename.c_str(), &buffer) == 0);
+#else
+    auto *file = fopen(filename.c_str(), "r");
+    if (file != nullptr)
+    {
+        fclose(file);
+        return true;
+    }
+    return false;
+
+#endif
 
 }
 
-//Return utc offset in minutes or -1 on failure
+//Return utc offset in minutes or throw spdlog_ex on failure
 inline int utc_minutes_offset(const std::tm& tm = details::os::localtime())
 {
 
 #ifdef _WIN32
-    (void)tm; // avoid unused param warning
 #if _WIN32_WINNT < _WIN32_WINNT_WS08
     TIME_ZONE_INFORMATION tzinfo;
     auto rv = GetTimeZoneInformation(&tzinfo);
@@ -154,9 +177,15 @@ inline int utc_minutes_offset(const std::tm& tm = details::os::localtime())
     DYNAMIC_TIME_ZONE_INFORMATION tzinfo;
     auto rv = GetDynamicTimeZoneInformation(&tzinfo);
 #endif
-    if (!rv)
-        return -1;
-    return -1 * (tzinfo.Bias + tzinfo.DaylightBias);
+    if (rv == TIME_ZONE_ID_INVALID)
+        throw spdlog::spdlog_ex("Failed getting timezone info. Last error: " + GetLastError());
+
+    int offset = -tzinfo.Bias;
+    if (tm.tm_isdst)
+        offset -= tzinfo.DaylightBias;
+    else
+        offset -= tzinfo.StandardBias;
+    return offset;
 #else
     return static_cast<int>(tm.tm_gmtoff / 60);
 #endif
