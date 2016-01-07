@@ -6,8 +6,8 @@
 struct AlleleFrequencyValue {
   //std::string chr;
   //uint64_t    pos;
-  uint8_t     ref;
-  uint8_t     alt;
+  std::string ref;
+  std::string     alt;
   double      altFreq;
 };
 

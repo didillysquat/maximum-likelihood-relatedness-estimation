@@ -25,8 +25,8 @@ bool AlleleFrequencyMap::populateFromFile(const std::string& fname) {
     auto toks = split(line, '\t');
     auto chr = toks[0];
     uint64_t pos = std::stoul(toks[1]);
-    uint8_t  ref = static_cast<uint8_t>(std::stoi(toks[2]));
-    uint8_t  alt = static_cast<uint8_t>(std::stoi(toks[3]));
+    std::string ref = toks[2];
+    std::string alt = toks[3];
     double   altFreq = std::stod(toks[4]);
     afMap_[std::make_tuple(chr, pos)] = {ref, alt, altFreq}; 
   }
