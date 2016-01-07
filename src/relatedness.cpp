@@ -84,7 +84,7 @@ void relatedness::populate_data_new(AlleleFrequencyMap* afMap) {
     // The number of samples we expect for each variant
     size_t numSamples = vcfFile->sampleNames.size();
 
-    std::ofstream freqOut("allele_freqs.txt");
+    //std::ofstream freqOut("allele_freqs.txt");
 
     auto genotypeFieldName = (likelihoodFormat == LikelihoodFormat::PHRED) ? "PL" : "GL";
     bool excludeBroken{true};
@@ -255,7 +255,7 @@ void relatedness::populate_data_new(AlleleFrequencyMap* afMap) {
 	  af = (1.0 - afv.altFreq);
 	}
 	alleleFreqs.push_back(af);
-    freqOut << chr << '\t' << pos << '\t' << ref << '\t' << alt << '\t' << (1.0 - af) << '\n';
+	//freqOut << chr << '\t' << pos << '\t' << ref << '\t' << alt << '\t' << (1.0 - af) << '\n';
 
         if (excludeBroken && isbroken) {
             logger->warn("excluding VCF record @ {} : {} due to GLs > 0", var.sequenceName, var.position);
@@ -277,7 +277,7 @@ void relatedness::populate_data_new(AlleleFrequencyMap* afMap) {
     }
     std::cerr << "number of SNPs masked (freq 0) = " << zeroCount << "\n";
     std::cerr << "number of SNPs masked (freq 1) = " << oneCount << "\n";
-    freqOut.close();
+    //freqOut.close();
 }
 
 
