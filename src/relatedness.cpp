@@ -255,7 +255,7 @@ void relatedness::populate_data_new(AlleleFrequencyMap* afMap) {
 	  af = (1.0 - afv.altFreq);
 	}
 	alleleFreqs.push_back(af);
-	//freqOut << chr << '\t' << pos << '\t' << ref << '\t' << alt << '\t' << (1.0 - af) << '\n';
+    	//freqOut << chr << '\t' << pos << '\t' << ref << '\t' << alt << '\t' << (1.0 - af) << '\n';
 
         if (excludeBroken && isbroken) {
             logger->warn("excluding VCF record @ {} : {} due to GLs > 0", var.sequenceName, var.position);
@@ -961,28 +961,29 @@ Eigen::Vector3d relatedness::em_optimization(
   //Iteration number
   int iter = 0;
 
-  while(thresh > 1e-4){
-    Eigen::MatrixXd X = Eigen::MatrixXd::Zero(snp_count,IBD_COUNT);
-    Eigen::VectorXd XS = Eigen::VectorXd::Zero(snp_count); //Used to normalize X
 
+  std::vector<int> maskedIndices;
+  for (int i = 0; i < snp_count; ++i) { 
+    if (isBootstrap) {
+      auto sn = (*bootstrap_inds)[i];
+      if (mask_snp(sn) == 1) { maskedIndices.push_back(i); }
+    } else {
+      if (mask_snp(i) == 1) { maskedIndices.push_back(i); }
+    }
+  }
+
+  Eigen::MatrixXd X = Eigen::MatrixXd::Zero(snp_count,IBD_COUNT);
+  Eigen::VectorXd XS = Eigen::VectorXd::Zero(snp_count); //Used to normalize X
+
+  while(thresh > 1e-4){
+    X.setZero();
+    XS.setZero();
     for(int j=0; j< IBD_COUNT; j++){
       for(size_t gtIdx = 0; gtIdx < GENOTYPE_COUNT; ++gtIdx) {
         Xall(gtIdx).col(j).noalias() = XPre(gtIdx).col(j)*k_values(j);
       }
     }
-    /*
-       for(int j=0; j< IBD_COUNT; j++){
-       for(size_t gtIdx = 0; gtIdx < GENOTYPE_COUNT; ++gtIdx) {
-       Xall(gtIdx).col(j).noalias() = ibs_all(gtIdx).col(j) * k_values(j);
-       }
-       }
 
-       for(size_t gtIdx = 0; gtIdx < GENOTYPE_COUNT; ++gtIdx) {
-       Xall(gtIdx).col(0).array() *= pibs.col(gtIdx).array();
-       Xall(gtIdx).col(1).array() *= pibs.col(gtIdx).array();
-       Xall(gtIdx).col(2).array() *= pibs.col(gtIdx).array();
-       }
-       */
 
     // Sum up all genotypes to get X
     for(size_t gtIdx = 0; gtIdx < GENOTYPE_COUNT; ++gtIdx) {
@@ -990,6 +991,7 @@ Eigen::Vector3d relatedness::em_optimization(
     }
 
     XS = X.rowwise().sum();
+    /*
     if (isBootstrap) {
       for(int i=0;i <snp_count; i++){ //Mask
         // bootstrapping
@@ -1006,7 +1008,24 @@ Eigen::Vector3d relatedness::em_optimization(
         }
       }
     }
+    */
 
+    // Mask values appropriately
+    for (auto i : maskedIndices) {
+      XS(i) = 1;
+    }
+
+    // Normalize X
+    for (int j = 0; j < IBD_COUNT; ++j) {
+      X.array().col(j) /= XS.array();
+    }
+
+    // Mask values appropriately
+    for (auto i : maskedIndices) {
+      for (int j = 0; j < IBD_COUNT; ++j) { X(i,j) = 0; }
+    }
+
+    /*
     //Normalize X
     for(int i=0; i<snp_count; i++){
       if(XS(i)==0){
@@ -1022,14 +1041,17 @@ Eigen::Vector3d relatedness::em_optimization(
         }
       }
     }
+    */
 
+    /** Do we need this? **/
     //Copy X to PIBD
-    ibd_probability=X;
+    //ibd_probability=X;
 
     //New parameter estimates
-    Eigen::Vector3d k_est = Eigen::Vector3d::Zero();
+    //Eigen::Vector3d k_est = Eigen::Vector3d::Zero();
 
     //Sum of probabilities at each site
+      /*
     for(int i=0; i<IBD_COUNT; i++){
       for(int j=0; j<snp_count; j++){
         auto sn = isBootstrap ? (*bootstrap_inds)[j] : j;
@@ -1038,6 +1060,10 @@ Eigen::Vector3d relatedness::em_optimization(
         }
       }
     }
+      */
+
+    // NEW:
+    Eigen::Vector3d k_est = X.colwise().sum();
 
     //Normalized estimates
     k_est /= k_est.sum();
