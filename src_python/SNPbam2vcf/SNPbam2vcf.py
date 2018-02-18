@@ -286,7 +286,7 @@ for g in range(len(SNPs)):
         ###calcule genotype quality
         GL_sort=copy.deepcopy(GL)
         GL_sort.sort()
-        GQ=-10*math.log10(10**GL_sort[1]/10**GL_sort[2])
+        GQ = -10 * (GL_sort[1] - GL_sort[2])
         GQs.append(GQ)
 
         ###assign genotype using highest likelihood
