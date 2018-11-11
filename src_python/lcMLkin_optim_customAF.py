@@ -94,7 +94,11 @@ if data[-1]=='':
 ##        '10_0', '10_1', '10_2', '10_3', '10_4', '10_5', '10_6', '10_7']
 
 
-head=string.split(data[0],'\t')[9:]
+for g in range(len(data)):
+    if (data[g][0]=='#') and (data[g][1]<>'#'):
+        head=string.split(data[g],'\t')[9:]
+        break
+        
 unrel_ind=[]
 
 for g in range(len(head)):
