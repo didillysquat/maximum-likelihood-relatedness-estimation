@@ -367,7 +367,10 @@ for g in range(len(pw)):
                     if kin(k,BestIBS,mask_mat)<>10E10:
                         ok=1
         temp=fmin(kin,k,args=(BestIBS,mask_mat),xtol=0.01,ftol=0.01,maxiter=None,maxfun=None,full_output=1, disp=0, retall=0, callback=None)                  
-        res.append([temp[1],temp[0]])
+        if np.isnan(temp[1])==True:
+            res.append([100000000000.0,[temp[0][0],temp[0][1]]])
+        else:
+            res.append([temp[1],[temp[0][0],temp[0][1]]])
 
     res2=[]
     for gg in range(3):
@@ -384,17 +387,27 @@ for g in range(len(pw)):
                     if GLkin(k,PIBSt,IBS_all,mask_mat)<>10E10:
                         ok=1
         temp=fmin(GLkin,k,args=(PIBSt,IBS_all,mask_mat),xtol=0.01,ftol=0.01,maxiter=None,maxfun=None,full_output=1, disp=0, retall=0, callback=None)                  
-        res2.append([temp[1],temp[0]])
+        if np.isnan(temp[1])==True:
+            res2.append([100000000000.0,[temp[0][0],temp[0][1]]])
+        else:
+            res2.append([temp[1],[temp[0][0],temp[0][1]]])
 
 
 
     res.sort()
     res2.sort()
     
-#    out= str(pw[g][0])+'\t'+str(pw[g][1])
     out=head[pw[g][0]]+'\t'+head[pw[g][1]]
-    out=out+'\t'+str(round(1-(res[0][1][0]+res[0][1][1]),2))+'\t'+str(round(res[0][1][0],2))+'\t'+str(round(res[0][1][1],2))+'\t'+str(round(0.5*res[0][1][0]+res[0][1][1],3))
-    out=out+'\t'+str(round(1-(res2[0][1][0]+res2[0][1][1]),2))+'\t'+str(round(res2[0][1][0],2))+'\t'+str(round(res2[0][1][1],2))+'\t'+str(round(0.5*res2[0][1][0]+res2[0][1][1],3))
+    if res[0][0]==10E10:
+        out=out+'\tNA\tNA\tNA\tNA'
+    else:
+        out=out+'\t'+str(round(1-(res[0][1][0]+res[0][1][1]),2))+'\t'+str(round(res[0][1][0],2))+'\t'+str(round(res[0][1][1],2))+'\t'+str(round(0.5*res[0][1][0]+res[0][1][1],3))
+
+    if res2[0][0]==10E10:
+        out=out+'\tNA\tNA\tNA\tNA'
+    else:
+        out=out+'\t'+str(round(1-(res2[0][1][0]+res2[0][1][1]),2))+'\t'+str(round(res2[0][1][0],2))+'\t'+str(round(res2[0][1][1],2))+'\t'+str(round(0.5*res2[0][1][0]+res2[0][1][1],3))
+
     out=out+'\t'+str(len(mask_mat)-np.sum(mask_mat))+'\n'
 
     print out[:-1]
