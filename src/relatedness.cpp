@@ -117,7 +117,7 @@ void relatedness::populate_data_new() {
 
         // For each sample in this variant
         for (auto s = var.samples.begin(); s != var.samples.end(); ++s) {
-
+            
             auto& sample = s->second;
 
             // Get the genotype
@@ -131,7 +131,7 @@ void relatedness::populate_data_new() {
 
             if (l == sample.end()) {
                 logger->error("Couldn't find the required field {} in record {}",
-                              genotypeFieldName, s->first);
+                            genotypeFieldName, s->first);
                 std::exit(1);
             }
 
@@ -152,13 +152,13 @@ void relatedness::populate_data_new() {
             // If one or both of the genotypes are null ".", then
             // fill in the likelihoods as invalid and move on to the
             // next sample for this variant.
-            if (gtstr != "./." and gtstr != ".|.") {
+            if (gtstr != "./." and gtstr != ".|." and gtstr != ".") {
                 auto gtVec = split(gtstr, "/|");
                 // Check that there are only 2 alleles?
                 if (gtVec[0] == "." or gtVec[1] == ".") {
                     gls = {-std::numeric_limits<double>::infinity(),
-                           -std::numeric_limits<double>::infinity(),
-                           -std::numeric_limits<double>::infinity()};
+                        -std::numeric_limits<double>::infinity(),
+                        -std::numeric_limits<double>::infinity()};
                     parseLikelihoods = false;
                 }
                 int ga = std::stoi(gtVec[0]);
@@ -168,8 +168,8 @@ void relatedness::populate_data_new() {
                 totGT += 2;
             } else {
                 gls = {-std::numeric_limits<double>::infinity(),
-                       -std::numeric_limits<double>::infinity(),
-                       -std::numeric_limits<double>::infinity()};
+                    -std::numeric_limits<double>::infinity(),
+                    -std::numeric_limits<double>::infinity()};
                 parseLikelihoods = false;
             }
 
@@ -219,7 +219,7 @@ void relatedness::populate_data_new() {
                 }
             }
             variantLikelihoods[sampleIndex] = gls;
-        }
+        } 
         genotypeLikelihoods.push_back(std::move(variantLikelihoods));
 
         if (totGT == 0) {
